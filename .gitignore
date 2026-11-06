@@ -1,0 +1,16 @@
+# 依赖与构建产物（本项目无需构建，留作保险）
+node_modules/
+dist/
+*.log
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.bak
+*~

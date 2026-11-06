@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>乱战四国 · 使用说明</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #101c2e;
+    --line: #1f3550;
+    --ink: #dbe7f3;
+    --dim: #8fa8bf;
+    --gold: #f0c46a;
+    --green: #7fd4a3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1100px 700px at 22% 0%, #12314b 0%, #0a1a2a 55%, #06111c 100%);
+    color: var(--ink);
+    font: 15px/1.75 "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 42px 26px 90px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 30px; }
+  h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: 4px; color: var(--gold); }
+  .sub { color: var(--dim); font-size: 13px; letter-spacing: 1px; }
+  h2 {
+    margin: 46px 0 14px;
+    font-size: 19px;
+    color: #ffe6b0;
+    border-left: 3px solid var(--gold);
+    padding-left: 10px;
+  }
+  h3 { margin: 26px 0 8px; font-size: 15px; color: #cfe3f5; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  code {
+    background: #0d2237; border: 1px solid #22405c; border-radius: 4px;
+    padding: 1px 5px; font-size: 13px; color: #a8d4ff;
+    font-family: Consolas, "Courier New", monospace;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #12263c; color: #ffe6b0; font-weight: 700; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  .note {
+    background: #0f2438; border: 1px solid #23486a; border-left: 3px solid var(--gold);
+    border-radius: 8px; padding: 10px 14px; margin: 14px 0; font-size: 14px;
+  }
+  .note b { color: var(--gold); }
+  .warn { border-left-color: #e0855a; }
+  .warn b { color: #ffb08a; }
+  .ok b { color: var(--green); }
+  .toc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 8px;
+  }
+  .toc ol { columns: 2; column-gap: 30px; margin: 6px 0 0; }
+  .toc a { color: #bcd9f2; text-decoration: none; }
+  .toc a:hover { color: var(--gold); text-decoration: underline; }
+  .kbd {
+    display: inline-block; min-width: 20px; text-align: center;
+    background: #12263c; border: 1px solid #2b5478; border-bottom-width: 2px;
+    border-radius: 5px; padding: 0 6px; font-size: 12px; color: #cfe3f5;
+  }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+    background: #2a3550; color: #cbbdf0; margin-left: 6px; vertical-align: 2px;
+  }
+  figure { margin: 18px 0 24px; }
+  figure img {
+    display: block; width: 100%; height: auto; border-radius: 10px;
+    border: 1px solid #23405c; box-shadow: 0 14px 36px rgba(0,0,0,.45);
+  }
+  figcaption { margin-top: 7px; color: var(--dim); font-size: 12px; text-align: center; }
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>乱战四国 · 使用说明</h1>
+  <div class="sub">在浏览器里和三个 AI 下四国军棋 · 不需要联网 · 不需要安装任何东西</div>
+</header>
+
+<div class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#start">三步开始</a></li>
+    <li><a href="#ui">界面怎么看</a></li>
+    <li><a href="#mode">两种玩法</a></li>
+    <li><a href="#play">怎么下</a></li>
+    <li><a href="#ai">三套 AI 怎么选</a></li>
+    <li><a href="#advice">参谋与猜子怎么读</a></li>
+    <li><a href="#tools">存盘 / 复盘 / 沙盘</a></li>
+    <li><a href="#rules">规则速查</a></li>
+    <li><a href="#files">文件夹里都有什么</a></li>
+    <li><a href="#faq">常见问题</a></li>
+  </ol>
+</div>
+
+<h2 id="start">一、三步开始</h2>
+<ol>
+  <li>把整个文件夹复制到电脑上任意位置（桌面、U 盘都行，路径带中文也没关系）。</li>
+  <li>双击 <code>index.html</code>，用 <b>Chrome</b> 或 <b>Edge</b> 打开。</li>
+  <li>点右上角「开始对局」。如果不想自己布阵，先点「自动布阵」。</li>
+</ol>
+<p>你执<b>南方</b>（棋盘下方），北方是你的队友，东、西两家是对手，都由 AI 操作。</p>
+
+<figure>
+  <img src="assets/shots/01-board.png" alt="开局布阵界面">
+  <figcaption>开局布阵：四家各 25 子摆满，点自己的两枚子即可交换；右边一列是全部操作</figcaption>
+</figure>
+<div class="note">
+  <b>如果双击后页面空白</b>：那是浏览器把本地文件的脚本拦了。两个办法——<br>
+  ① 换个浏览器再试（Edge 一般可以）；<br>
+  ② 在本文件夹里开一个命令行，执行 <code>python -m http.server 8000</code>，
+  然后浏览器访问 <code>http://localhost:8000</code>（装过 Python 才有这个命令）。
+</div>
+
+<h2 id="ui">二、界面怎么看</h2>
+<p>整页分四块：</p>
+<table>
+  <tr><th>区域</th><th>有什么</th></tr>
+  <tr>
+    <td><b>顶部</b></td>
+    <td>模式下拉（乱战四国 / 一般军棋）、信息模式（常规 / 双明 / 全明）、AI 随机方式、音效开关。</td>
+  </tr>
+  <tr>
+    <td><b>左侧</b></td>
+    <td>当前状态、四家角色（谁出局、剩几子）、战果、对局记录。<b>战果和记录默认是收起的</b>，点标题展开。</td>
+  </tr>
+  <tr>
+    <td><b>中间</b></td>
+    <td>棋盘。上方一行是「第几步 / 模式 / 轮到谁」，轮到哪家时棋盘内框会亮起那家的颜色。</td>
+  </tr>
+  <tr>
+    <td><b>右侧</b></td>
+    <td>新对局 / 作弊选子 / 自动布阵 / 沙盘摆子 / 阵法 / 存盘 / 读档 / 复盘 / 三引擎参谋 / 每家 AI 种类。<br>「每家 AI 种类」默认收起。</td>
+  </tr>
+</table>
+<div class="note ok">
+  <b>棋盘会自己找大小。</b>窗口最大化、半屏、甚至只有 900×700 的小窗，棋盘都会按可用高度撑满，
+  四家棋子一定完整在画面里，不需要手动缩放。
+</div>
+
+<h2 id="mode">三、两种玩法</h2>
+<table>
+  <tr><th></th><th>一般军棋（默认）</th><th>乱战四国</th></tr>
+  <tr><td>发牌</td><td>每家一套完全相同的 25 子，位置随机</td><td>100 枚棋子随机分 4 家，每家 25 枚（阵容可能残缺或重复）</td></tr>
+  <tr><td>军旗 / 司令</td><td>每家 1 面旗、1 个司令</td><td>可能 0～2 面旗、0～4 个司令</td></tr>
+  <tr><td>地雷</td><td>3 枚，只能放后两排</td><td>3 枚，<b>8 枚以上时</b>可放倒数第三排</td></tr>
+  <tr><td>大本营</td><td>营内子按正常大小比较</td><td><b>营内子小于任何外子</b>，所有子都能攻营</td></tr>
+  <tr><td>碰雷</td><td>非工兵撞雷，攻方死、雷保留</td><td>除工兵外<b>两子同归于尽</b></td></tr>
+  <tr><td>多旗 / 升旗</td><td>没有</td><td>有，规则见第五节</td></tr>
+</table>
+<p>切换模式会直接开新局。</p>
+
+<h2 id="play">四、怎么下</h2>
+<h3>布阵</h3>
+<ul>
+  <li>25 个非行营格摆满，军旗必须在大本营，炸弹不能进第一排。</li>
+  <li>点自己的两枚棋子即可<b>交换位置</b>；点「自动布阵」随机铺一套；点「阵法」可以从内置阵法库选一套铺上。</li>
+  <li>乱战模式手里有 2 面以上军旗时，可以勾「双旗布阵」把两面旗分放两个大本营。</li>
+</ul>
+<h3>走子</h3>
+<ul>
+  <li>点自己的棋子，绿色格子是可以走的位置，再点一下就走过去。</li>
+  <li>上一步是白色箭头；鼠标悬停目标格会显示从选中子出发的绿色箭头。</li>
+  <li>吃子、同归于尽、阵亡、亮旗都有音效，可以右上角关掉。</li>
+</ul>
+<h3>升旗（只有乱战会遇到）</h3>
+<p>最后一个司令阵亡且手里没有军旗时，点一个大本营升旗，之后那个营被攻占就输。</p>
+<h3>能看见什么</h3>
+<ul>
+  <li><b>常规</b>：只看得到自己的子，和已经亮明的子。队友（北方）的子对你也同样不可见。</li>
+  <li><b>双明</b>：你同时控南北两家，南北互相看得见（东西两队 AI 之间也互明，信息对称）。</li>
+  <li><b>全明</b>：四家棋子全部摊开，AI 也看得到全部——这属于公开赛，不算公平对局，适合研究用。</li>
+  <li>除工兵主动侦察外，碰子不会公开对方身份，战报也只写「棋子」不写兵种。</li>
+</ul>
+
+<h2 id="ai">五、三套 AI 怎么选</h2>
+<p>三套是三代不同的技术路线，都只能用「自己看得见的子 + 公开战报」推理，<b>不会偷看暗子</b>。</p>
+<table>
+  <tr><th>引擎</th><th>怎么想棋</th><th>特点</th></tr>
+  <tr>
+    <td><b>零代</b><br><span class="tag">2007 逆向复刻</span></td>
+    <td>按 2007 年《四国争霸》的原版公式给每一步打分，不算对手应手。</td>
+    <td>出手快、风格直来直去，会走出一些「原版味」的怪招。适合当陪练。</td>
+  </tr>
+  <tr>
+    <td><b>一代</b><br><span class="tag">搜索 + 信念</span></td>
+    <td>先推断每个暗子「可能是哪几种棋」，再把暗子按概率补全成若干完整局面分别搜索，取平均分选着。</td>
+    <td>最强的一套。四种风格：风（快攻）/ 林（稳守）/ 火（凶狠）/ 山（厚实），另有「自适应」按局面切换。</td>
+  </tr>
+  <tr>
+    <td><b>二代</b><br><span class="tag">神经网络克隆</span></td>
+    <td>从人类对局学出来的走法网络，直接给候选着打分，再抽若干世界复算。</td>
+    <td>下得像人，节奏平稳，读牌不如一代透，但更少「机器味」。</td>
+  </tr>
+</table>
+<p>顶部「AI 随机」让每个 AI 座位从上述引擎里各抽一个；想让某一家固定，就到右栏「每家 AI 种类」里单独指定。</p>
+<div class="note">
+  <b>每步思考上限约 1.5 秒</b>，算完就落子（不会硬等满）。三套里二代是固定成本（每步几十毫秒），
+  一代最吃时间，慢的机器上会明显感觉到思考。
+</div>
+
+<h2 id="advice">六、参谋与猜子怎么读</h2>
+
+<figure>
+  <img src="assets/shots/02-advice-full.png" alt="三引擎参谋">
+  <figcaption>三引擎参谋：零代 / 一代 / 二代各自的推荐走法并排给出，还标了各自的耗时</figcaption>
+</figure>
+<p>右栏勾上「三引擎参谋」后，你回合时面板会把<b>零代 / 一代 / 二代各自推荐的走法</b>并排列出来，谁也不许替你落子。</p>
+<p>下面还会列<b>猜子</b>——对敌方暗子的判断。这块要注意两点：</p>
+<h3>1. 猜的是「档位」，不是具体军衔</h3>
+<ul>
+  <li><b>大</b> = 司令 / 军长 / 师长　<b>旅</b> = 旅长　<b>小</b> = 团长及以下</li>
+  <li><b>炸</b> = 炸弹　<b>雷</b> = 地雷　<b>旗</b> = 军旗</li>
+  <li>只有当证据把范围压到单一军衔（≥85%）时，才写具体名字并标「确定」。<br>
+      一屏「连长 12% 排长 12% 工兵 14%」既不能指导决策，又让人误以为分得很细，所以不这么显示。</li>
+</ul>
+<h3>2. 每个猜测都带证据角标</h3>
+
+<figure>
+  <img src="assets/shots/04-midgame.png" alt="中盘对局">
+  <figcaption>打到第 22 步：四家各有损耗，白箭头是上一步，棋盘内框亮起的是当前行动方</figcaption>
+</figure>
+<p>鼠标悬停在猜测上，会写清「凭什么这么猜」。角标含义：</p>
+<table>
+  <tr><th>角标</th><th>证据</th><th>它支持什么结论</th></tr>
+  <tr><td><b>锁</b></td><td>硬约束：身份域里只剩同一档（比如「吃了我方旅长 ⇒ 只能是司/军/师」）</td><td>直接就是这个档位，算充分证据</td></tr>
+  <tr><td><b>吃</b></td><td>它吃过我方的子。人类吃掉我方团/营级时，六到七成上的是大子</td><td>大</td></tr>
+  <tr><td><b>区</b></td><td>它开局所在的那个区域已经有明大子（或已确认的大子阵亡）</td><td>小（一个区的大子名额有限）</td></tr>
+  <tr><td><b>位</b></td><td>这一格的「经验位置先验」（从一万多份人类布阵里统计的）</td><td>该格历史上最常放的档位</td></tr>
+  <tr><td><b>阵</b></td><td>兼容的阵法库里这一档占比</td><td>该档</td></tr>
+</table>
+<div class="note">
+  <b>为什么不给 100%？</b>四国军棋是暗棋，信息论上就不存在「准确定出对方每一枚子」的试探。
+  一条经验只能算线索，所以面板要求<b>两条同向证据</b>（或一条硬约束锁死）才敢写成结论，
+  单条最多当参考。这也是为什么有些你「感觉很明显」的子，面板反而不列——不是没算，是不敢下结论。
+</div>
+
+<h2 id="tools">七、存盘 / 复盘 / 沙盘</h2>
+<h3>存盘、读档、复盘</h3>
+<ul>
+  <li><b>存盘</b>把当前局面和本局走子记录写进浏览器本机存储；<b>读档</b>恢复。不是云存档。</li>
+  <li><b>复盘</b>：逐帧回看，<span class="kbd">←</span> <span class="kbd">→</span> 也能翻。复盘里四家默认全明，
+      点任意棋子可切换明/暗，也可以按方隐藏、切换视角（南/东/北/西，棋盘会旋转但文字保持可读）。</li>
+  <li><b>保存复盘 / 读复盘</b>是单独一份文件槽，不影响当前对局的存档。</li>
+</ul>
+<h3>沙盘摆子</h3>
+<p>点「沙盘摆子」进一个自由局面：点兵种再点格放置，放好的子可以取回；可以「填满本方 / 清空本方」，
+然后「开始对弈」让四家 AI 从这个局面接着下。用来验某个残局或某个想法。</p>
+<h3>接管演练</h3>
+<p>复盘任意一帧时可以让 AI 从这个局面接着下（"如果当时走别的会怎样"），也可以先摆子再让它演替。</p>
+
+<figure>
+  <img src="assets/shots/05-replay.png" alt="复盘界面">
+  <figcaption>复盘：逐帧回看，四家棋子默认全部明牌，可以按方隐藏、也可以切视角看</figcaption>
+</figure>
+
+<h2 id="rules">八、规则速查</h2>
+<h3>一般军棋（25 子构成）</h3>
+<p>司令 1、军长 1、师长 2、旅长 2、团长 2、营长 2、连长 3、排长 3、工兵 3、地雷 3、炸弹 2、军旗 1。</p>
+<p>大小顺序：司令 &gt; 军长 &gt; 师长 &gt; 旅长 &gt; 团长 &gt; 营长 &gt; 连长 &gt; 排长 &gt; 工兵。
+<b>同级相碰同归于尽。</b></p>
+<ul>
+  <li><b>炸弹</b>：碰任何子同归于尽（碰地雷也同尽）。</li>
+  <li><b>地雷</b>：不能移动；只有工兵能挖掉，其他子撞雷攻方死（乱战里是两子同尽）。</li>
+  <li><b>工兵</b>：可以走铁路的弯道，这是它唯一的机动优势；主动出击碰到暗子时会侦察（只有友方看到结果）。</li>
+  <li><b>行营</b>：营里的子不能被攻击，是安全的；从营里出来才能被打。</li>
+  <li><b>大本营</b>：进去就再也出不来；军旗必须放在大本营。</li>
+  <li><b>胜负</b>：一方两人的军旗都被攻占（或被判负）即输；无子可动也算输。</li>
+</ul>
+<h3>乱战多出来的部分</h3>
+<ul>
+  <li>0 面旗 0 个司令：两个大本营都被攻占才败。</li>
+  <li>0 面旗但有司令：任一大本营被攻占且司令还活着，立即败；最后一个司令阵亡时必须升旗。</li>
+  <li>多面旗：1 面必须放营，其余可以当军长用；也可以「双旗」分放两营，这时对手要攻下两个大本营。</li>
+</ul>
+
+<h2 id="files">九、文件夹里都有什么</h2>
+<table>
+  <tr><th>文件</th><th>作用</th></tr>
+  <tr><td><code>index.html</code></td><td>入口，双击它开始</td></tr>
+  <tr><td><code>style.css</code></td><td>界面样式</td></tr>
+  <tr><td><code>board.js</code> <code>game.js</code></td><td>棋盘模型与规则（走子、碰子、胜负）</td></tr>
+  <tr><td><code>ui.js</code></td><td>棋盘绘制、交互、复盘、参谋面板</td></tr>
+  <tr><td><code>ai.js</code></td><td>一代 AI（搜索 + 信念）</td></tr>
+  <tr><td><code>ai_gen0.js</code></td><td>零代 AI（2007 公式）</td></tr>
+  <tr><td><code>bc_ai.js</code> <code>bc_model_data.js</code></td><td>二代 AI 与它的网络权重（这个文件 26MB，是这个文件夹体积的大头）</td></tr>
+  <tr><td><code>formations*.js</code></td><td>883 套开局阵法（含从人类对局里抽出的 800 套）</td></tr>
+  <tr><td><code>pos_prior_data.js</code> <code>zone_pair_data.js</code> <code>eat_rank_data.js</code></td><td>从人类对局统计出来的经验表：位置先验、区域大子分布、吃子习惯</td></tr>
+  <tr><td><code>qq_layout.js</code> <code>assets/board.png</code></td><td>棋盘坐标映射与底图（文件名沿用旧名，不用改）</td></tr>
+  <tr><td><code>sounds/*.wav</code></td><td>走子 / 吃子 / 阵亡 / 亮旗音效</td></tr>
+  <tr><td><code>agent.js</code></td><td>「外援」代理：把某一家的走子交给外部程序（不接也能正常玩）</td></tr>
+  <tr><td><code>介绍.html</code></td><td>就是这个文件</td></tr>
+</table>
+<div class="note warn">
+  <b>不要单独移动某个文件。</b>页面靠相对路径互相引用，只把 <code>index.html</code> 拖出来会打不开。
+  要分享就整个文件夹打包。
+</div>
+
+<h2 id="faq">十、常见问题</h2>
+<h3>双击 index.html 一片空白 / 没有反应</h3>
+<p>浏览器拦了本地文件的脚本。换 Edge 试，或按第一节的办法起一个本地服务器。</p>
+<h3>AI 走得很慢</h3>
+<p>每步上限 1.5 秒，一代在这个预算里最吃 CPU。想快就在「每家 AI 种类」里把对手换成二代或零代。</p>
+<h3>我的存盘 / 阵法库换电脑后不见了</h3>
+<p>那些存在浏览器的 localStorage 里，跟着浏览器走，不跟文件夹走。要带走就在旧机器上「存盘」导出。</p>
+<h3>猜子为什么这么保守，明明看得出来</h3>
+<p>见第六节末尾：单条经验不定罪。想让它更敢说，可以看角标——两个角标以上的才是它真有把握的。</p>
+<h3>能不能联机和真人下</h3>
+<p>这个包里没有联网对战。只有「外援模式」可以把某一家交给外部程序（需要另配，见开发文档）。</p>
+<h3>可以改规则 / 改 AI 吗</h3>
+<p>全部是明文 JavaScript，可以直接改。改了记得备份原文件。</p>
+
+<footer>
+  乱战四国 · 离线版。棋盘底图与音效取自本机 QQ 四国军棋，仅供个人本地娱乐使用。<br>
+  搜索架构部分改编自 MIT 许可的开源项目，详见开发目录里的 THIRD_PARTY_NOTICES.md。<br>
+  这份说明由项目自身生成，若与游戏内表现不一致，以游戏内为准。
+</footer>
+
+</div>
+</body>
+</html>

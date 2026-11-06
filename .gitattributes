@@ -1,0 +1,7 @@
+# 统一换行，避免 Windows/Linux 协作时整文件 diff
+* text=auto eol=lf
+
+# 26MB 权重：标记为二进制，git 不做文本 diff、不做换行转换
+bc_model_data.js binary
+*.png binary
+*.wav binary
