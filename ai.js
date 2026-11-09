@@ -453,6 +453,11 @@
   // 至少跑满 2 个世界才允许早停（前 2 个世界是浅深度 3，进到 4 才有比较意义）。
   // JJ_EARLY=0 关掉，回到「跑满预算」的旧行为。
   const EARLY_STOP = _num("JJ_EARLY", 6);
+  // 固定世界数（2026-11-07）：>0 时**不看时间**，跑满 N 个世界就停。
+  // 为什么需要它：时间预算下同一局面问两遍会给出不同走法（世界数随机器抖动而变），
+  // 任何 A/B 都混着一层计时噪声（日志 §七十五）。固定世界数后对局完全可复现，
+  // 配合「同发牌配对」才能把 3pp 级别的差异量出来。默认 0 = 保持原行为。
+  const W_FIX = Math.max(0, Math.floor(_num("JJ_WFIX", 0)));
   // 决策稳定化（2026-11-03）：同一个局面连跑 6 次 choose，6 次里 3 次选营长、3 次选工兵，
   // 绝对分从 −45 摆到 +87 —— 因为「安静局面」里所有候选的均值差都小于采样噪声，
   // argmax 等于抽签。这里把「在噪声带内并列」的候选找出来，用 rootPrior（静态启发式）
@@ -490,6 +495,22 @@
   const FORCE_FLAG_K = _num("JJ_F_FLAG", 0.0);
   // 换子意愿：A/B 24 局 33.3% vs 45.8%，方向不利，默认关掉（保留开关便于复测）。
   const FORCE_TRADE_K = _num("JJ_F_TRADE", 0);
+
+  // ---- G1 疑似炸不碰（准入，2026-11-06）----
+  // 依据（视频分级表 A 档）：331「判明炸位后不吃疑似炸」/ 333「疑似炸不必碰」/
+  //   338「不吃小棋防四线炸」/ 343「勿放着等碰防带炸」/ 60「不确定有无39别拿38下底」。
+  // 逻辑：我方师以上去攻击一个**未知**子，而该格「是炸弹」的信念又够高 —— 这不是进攻，
+  //   是拿大子赌对面摆炸。直接剔除该手。
+  //
+  // 为什么不是「对换准入」：第一版按「P(同级) ≥ 0.20」写，实测 P(同级) 中位只有 0.029
+  //   （12 类分布摊薄，单点永远不高），104 手里只触发 1 次 = 事实上不存在。
+  //   改按 P(炸弹)：实测攻击未知子时 p75=0.099 / p90=0.169，师以上攻击里 0.15 以上占 24.6%，
+  //   这才是能落地的判据。
+  // 与 FORCE_TRADE_K 的区别：那是**加权**（24 局 33% vs 46%，已关），这是**准入**（只删候选）。
+  const GATE1_ON = _ENV.JJ_GATE1 === "1";
+  const GATE1_RANK = _num("JJ_GATE1_RANK", 38);     // 师(38)及以上才拦
+  const GATE1_P = _num("JJ_GATE1_P", 0.15);         // 「是炸弹」的信念门槛
+  const GATE_STATS = { g1: 0, g1Plies: 0 };
   // 「打弱的那家」：四国的胜负是扛旗，不是比谁子多，所以账的用法不是「调整胆子大小」，
   // 而是「把优势集中到已经虚弱的那一家」。剩余子力比对手平均少 40 分 → 打他更划算。
   // 权重按 A/B 定档（各 32~40 局）：6 → 18 是这一次唯一稳定的改动，18 的两档都是 ~48~50% vs 35%。
@@ -2283,6 +2304,11 @@
     return pm;
   }
 
+  // 【已否决，2026-11-06】分级表条目 90「残局不要无脑飞兵」曾在这里实现过一版走法过滤：
+  //   残局 + 我方工兵 + 敌方象限内空手落子 + 落点 row<=2 且比出发格更靠前 ⇒ 剔除。
+  // 实测（training 侧 3 局/档）：阈值 100 时**从不触发**（局均只有 84 手）；
+  // 阈值 20~60 时每局拦 19~68 次（明显在拦正常走位），而工兵阵亡反而从 8.7 升到 10.0 枚/局。
+  // 结论：机械代理表达不了"无脑"这个判断，两边都不对，已整段回退。不要重做。
   function isEarlyEngineerRaid(state, seat, move, domains) {
     if (!ENG_RAID || !ENG_HOLD) return false;
     if ((state.moveCount || 0) >= ENG_HOLD) return false;
@@ -2455,6 +2481,9 @@
     try { applyEatPrior(state, seat, rows, domains); } catch (err) { /* 不影响主流程 */ }
     // 「A 去抓明子（贴上去但没吃）」—— 炸/装炸/大子/诱饵 对这条的反应不同（见 applyGrabPrior）
     try { applyGrabPrior(state, seat, rows); } catch (err) { /* 不影响主流程 */ }
+    // 「进营/出营」「逗留」两条新的行为证据（见 applyCampPrior / applyDwellPrior）
+    try { applyCampPrior(state, seat, rows); } catch (err) { /* 不影响主流程 */ }
+    try { applyDwellPrior(state, seat, rows); } catch (err) { /* 不影响主流程 */ }
 
   // 同区格对条件化：某个子被确认（或高概率）是大子 ⇒ 同区其它暗子的大子率按
     // 人类布阵的经验条件概率重算（见 build_zone_pair_table.js 的留出验证）
@@ -3094,6 +3123,103 @@
   // 注意与 EAT 分工：已经吃掉的走法归 EAT 表管，这里只管「贴上去但没吃」。
   const GRAB_ON = _ENV.JJ_GRAB !== "0";
   const GRAB_STATS = { fire: 0, decoy: 0, none: 0 };
+
+  // ---- 守营/让营（CAMP，2026-11-06，分级表条目 104/105/159/221）----
+  // 原文：「探—抓—回营＝大子」「对方让营暴露工兵」「二线进营暂疑诈」「抬子疑炸」。
+  // 判据只看**敌方上一手的方向**：进营 / 出营。营（camp）是不可被吃的安全格，
+  // 玩家会把不想暴露的子停在里面；但炸弹也爱躲营，所以「进营⇒大」只能给温和权重。
+  // 【实测结论：方向相反，默认关】2026-11-06 在自对弈里统计两种走法的真实兵种分布
+  // （进营 159 次 / 逗留 536 次 / 基线 915 次），得到似然比：
+  //   进营 vs 基线：司令 0.70、军长 0.71、师长 0.69、营长 2.49、工兵 1.30、连长 1.17
+  //   逗留 vs 刚动过：司令 0.34、军长 0.84、师长 0.63、排长 1.85、炸弹 1.63
+  // 也就是说：**进营/逗留的子反而更小**，与视频里的「守营=大子」「逗留=大子」相反。
+  // 原因很直接——那些口诀是对**人类**说的（人会心疼大子），而我们的对手是会不停用大子进攻的 AI。
+  // 这与 ①b「人类吃子表套 AI 局方向相反」是同一类问题。要用于对人类，必须按对手类型分流两张表，
+  // 不能直接把人类口诀当成 AI 的先验。默认关，代码留作"AI 行为表"的骨架。
+  const CAMP_ON = _ENV.JJ_CAMP === "1";
+  const CAMP_L = {
+    into: { commander: 1.30, army: 1.30, division: 1.25, brigade: 1.10, regiment: 1.00,
+      battalion: 0.95, company: 0.90, platoon: 0.90, engineer: 0.90, bomb: 1.10, mine: 1.00, flag: 1.00 },
+    out: { commander: 0.88, army: 0.88, division: 0.92, brigade: 0.98, regiment: 1.02,
+      battalion: 1.06, company: 1.12, platoon: 1.12, engineer: 1.10, bomb: 1.00, mine: 1.00, flag: 1.00 },
+  };
+  const CAMP_STATS = { fire: 0, into: 0, out: 0, skip: 0 };
+
+  function applyCampPrior(state, seat, rows) {
+    if (!CAMP_ON || !rows) return;
+    if (state.campOff && state.campOff[seat]) return;
+    const tape = state.moveTape || [];
+    const last = tape[tape.length - 1];
+    if (!last || !last.to || !last.from) { CAMP_STATS.skip += 1; return; }
+    if (last.seat === seat) return;                     // 我方走子不推断敌方
+    if (last.cap) return;                               // 吃子手交给 EAT/GRAB
+    const toCell = B.BOARD.byId.get(last.to), fromCell = B.BOARD.byId.get(last.from);
+    if (!toCell || !fromCell) return;
+    const into = toCell.kind === "camp" && fromCell.kind !== "camp";
+    const out = fromCell.kind === "camp" && toCell.kind !== "camp";
+    if (!into && !out) return;
+    const row = rows.get(last.piece);
+    if (!row || !row.size) return;
+    const tbl = into ? CAMP_L.into : CAMP_L.out;
+    let sum = 0;
+    for (const t of row.keys()) {
+      const L = tbl[t] === undefined ? 1 : tbl[t];
+      row.set(t, (row.get(t) || 0) * L);
+      sum += row.get(t);
+    }
+    if (!(sum > 0)) return;
+    for (const t of row.keys()) row.set(t, row.get(t) / sum);
+    CAMP_STATS.fire += 1;
+    if (into) CAMP_STATS.into += 1; else CAMP_STATS.out += 1;
+  }
+
+  // ---- 逗留（DWELL，2026-11-06，分级表条目 101）----
+  // 原文：「某子在一线位置逗留好几步、若小早该横吃了，打你的多半是 38」。
+  // 引擎之前**完全没有「某格停了 N 手」这个特征**。判据：
+  //   动过（说明不是雷/旗） + 已经连续 DWELL_MIN 手没动 + 不在大本营 ⇒ 更可能是大子。
+  // 只对有移动史的子上生效：从没动过的子可能是雷/旗，逗留这件事对他们没有信息量。
+  // 同上：实测 LR 与口诀相反（司令 0.34），默认关。见 applyCampPrior 上方那张表的说明。
+  const DWELL_ON = _ENV.JJ_DWELL === "1";
+  const DWELL_MIN = _num("JJ_DWELL_MIN", 8);
+  const DWELL_L = { commander: 1.28, army: 1.28, division: 1.22, brigade: 1.10, regiment: 1.00,
+    battalion: 0.95, company: 0.90, platoon: 0.90, engineer: 0.92, bomb: 1.05, mine: 1.00, flag: 1.00 };
+  const DWELL_STATS = { fire: 0, skip: 0 };
+
+  function applyDwellPrior(state, seat, rows) {
+    if (!DWELL_ON || !rows) return;
+    if (state.dwellOff && state.dwellOff[seat]) return;
+    const tape = state.moveTape || [];
+    if (!tape.length) return;
+    const lastIdx = new Map();
+    for (let i = 0; i < tape.length; i += 1) {
+      const m = tape[i];
+      if (m && m.piece) lastIdx.set(m.piece, i);
+    }
+    for (const p of state.pieces) {
+      if (!p.position || p.owner === seat) continue;
+      if (ally(p.owner, seat)) continue;
+      // 「动过」不能用 p.moved 判：那个标记只在**天命暗牌**里由 game.js 置位
+      // （applyMove 里 `if (humanLatentAttacker) attacker.moved = true`），普通走子从不设置。
+      // 第一版用它判断，导致这条证据一次都没触发（DWELL 0 次）。改用磁带：出现在 tape 里就是动过。
+      if (!lastIdx.has(p.id)) continue;                // 没动过 ⇒ 可能雷/旗，逗留无信息
+      const cell = B.BOARD.byId.get(p.position);
+      if (!cell || cell.kind === "hq") continue;       // 大本营里的子本来就不动
+      const li = lastIdx.get(p.id);
+      const idle = li < 0 ? tape.length : (tape.length - 1 - li);
+      if (idle < DWELL_MIN) continue;
+      const row = rows.get(p.id);
+      if (!row || !row.size) continue;
+      let sum = 0;
+      for (const t of row.keys()) {
+        const L = DWELL_L[t] === undefined ? 1 : DWELL_L[t];
+        row.set(t, (row.get(t) || 0) * L);
+        sum += row.get(t);
+      }
+      if (!(sum > 0)) continue;
+      for (const t of row.keys()) row.set(t, row.get(t) / sum);
+      DWELL_STATS.fire += 1;
+    }
+  }
 
   function applyGrabPrior(state, seat, rows) {
     if (!GRAB_ON || !rows) return;
@@ -4930,6 +5056,27 @@
       try { brow = beliefRowsView(state, seat, domains); } catch (err) { brow = null; }
     }
     state.__evRows = brow || null;      // 给 buildWorld 算期望价值用（不含抽样）
+
+    // G1 疑似炸不碰：师以上攻击「未知且可能是炸」的子 ⇒ 剔除
+    if (GATE1_ON && brow && !(state.gate1Off && state.gate1Off[seat])) {
+      const keep = actual.filter((m) => {
+        const d = G.pieceAt(state, m.to);
+        if (!d || d.owner === seat || ally(d.owner, seat)) return true;
+        if (G.visibleTo(state, seat, d)) return true;            // 明子：怎么打是决策，不拦
+        const a = G.pieceAt(state, m.from);
+        if (a.type === "bomb" || a.type === "engineer") return true;   // 炸换炸/工兵挖雷，不受此限
+        const ra = RANK_NUM[a.type] || 0;
+        if (ra < GATE1_RANK) return true;                        // 小子试探不在本 gate 范围
+        const row = brow.get(d.id);
+        if (!row) return true;
+        const pb = row.get ? (row.get("bomb") || 0) : 0;
+        if (pb < GATE1_P) return true;                           // 不像炸，放行
+        GATE_STATS.g1 += 1;
+        return false;
+      });
+      if (keep.length && keep.length < actual.length) { actual = keep; GATE_STATS.g1Plies += 1; }
+    }
+
     // 战术连招：先把「值得用炸弹换的敌子」标出来（只算一次，喂给根节点排序）
     const hvt = hvtTargets(state, seat, mem, domains);
     const priors = actual.map((m) => {
@@ -4983,6 +5130,16 @@
     const TACT = root.JunqiTactics;
     let tacticPhase = null;
     const tacticOf = new Map();
+    // 预留格（tactics.js）：队友要用的格别占。只删分不改分形状——这里给的是**负分**，
+    // 相当于一条位置禁区；依据分级表 387/390/391/401/404。
+    const resvSet = TACT ? TACT.reservedCells(state, seat) : null;
+    const resvOf = new Map();
+    if (resvSet) {
+      for (const c of candidates) {
+        const v = TACT.resvBonus(state, seat, c, resvSet);
+        if (v) { resvOf.set(`${c.from}>${c.to}`, v); if (v < 0) TACT.RESV_STATS.in += 1; else TACT.RESV_STATS.out += 1; }
+      }
+    }
     if (TACT && TACT.ON) {
       try {
         tacticPhase = TACT.prepare(state, seat, actual, rowsOnce());
@@ -5001,6 +5158,26 @@
           }
         }
       } catch (err) { tacticPhase = null; }
+    }
+    // ---- 人类走法先验（human_prior.js，2026-11-06）----
+    // 这是第 3.0 版的第一个「信息类」改动，和之前五条行为规则不是一类东西：
+    // 权重来自 3241 局人类棋谱的条件 logit（P(走法|局面) ∝ exp(w·f)），
+    // 不是人手写的口诀。它只作为一个加分项，评估函数与搜索完全不动。
+    // 默认关（JJ_HP=0）；打开了才建表，关着时连一次特征都不会算。
+    const HP = root.JunqiHumanPrior;
+    const hpOf = new Map();
+    let hpCtx = null;
+    if (HP && HP.ON && !(state.hpOff && state.hpOff[seat])) {
+      try {
+        hpCtx = HP.makeCtx(state);
+        let mx = 0;
+        for (const c of candidates) {
+          const vv = HP.bonus(state, seat, c.from, c.to, hpCtx);
+          if (vv) { hpOf.set(`${c.from}>${c.to}`, vv); if (Math.abs(vv) > mx) mx = Math.abs(vv); }
+        }
+        HP.STATS.plies = (HP.STATS.plies || 0) + 1;
+        if (mx > (HP.STATS.maxAbs || 0)) HP.STATS.maxAbs = mx;
+      } catch (err) { hpCtx = null; }
     }
     const riskOf = new Map();
     const mateFlagOf = new Map();
@@ -5084,6 +5261,7 @@
     if (adaptive) { ADAPT_STATS.calls += 1; ADAPT_STATS.unc += unc; ADAPT_STATS.n += worldN; }
     while (Date.now() < deadline - 20) {
       if (adaptive && (round >= worldN || guard >= worldN * 3)) break;
+      if (W_FIX > 0 && samples >= W_FIX) break;
       guard += 1;
       // 每轮自己的 deadline：剩余时间 / 剩余轮数。前面几轮快，后面的就能多分到。
       const nowT = Date.now();
@@ -5185,20 +5363,25 @@
         const mean = st.sum / st.n;
         const spread = Math.sqrt(Math.max(0, st.sq / st.n - mean * mean));
         let score = mean - riskNow * spread + (priorOf.get(`${c.from}>${c.to}`) || 0) * 0.01
-          + (coopOf.get(`${c.from}>${c.to}`) || 0) + (tacticOf.get(`${c.from}>${c.to}`) || 0);
+          + (coopOf.get(`${c.from}>${c.to}`) || 0) + (tacticOf.get(`${c.from}>${c.to}`) || 0)
+          + (resvOf.get(`${c.from}>${c.to}`) || 0) + (hpOf.get(`${c.from}>${c.to}`) || 0);
         if (isRevisit(state, c) && !G.pieceAt(state, c.to)) score -= 2000;   // 别在原地来回摆
         // 记下「标准误」：噪声带用它判断哪些候选其实是并列的
         stats[i].se = st.n ? Math.max(0.5, spread / Math.sqrt(st.n)) : 0;
         stats[i].meanNow = mean;
         if (score > bestScore) { bestScore = score; chosenScore = score; best = c; chosenKey = `${c.from}>${c.to}`; }
+        if (HP && HP.ON) { const r = HP.STATS; if (r.rootLo === undefined || score < r.rootLo) r.rootLo = score; if (r.rootHi === undefined || score > r.rootHi) r.rootHi = score; }
       }
       // 收敛早停：最好着连续 N 个世界不变就收工，让 budgetMs 变成真正意义上的「上限」。
       // 注意它是「世界数」的天花板：EARLY=6 时实测每手只跑 10 个世界就停，
       // 再想多看世界必须先把它关掉（state.earlyOff 按座位）。
-      if (EARLY_STOP > 0 && samples >= 2 && !(state.earlyOff && state.earlyOff[seat])) {
+      // 早停阈值可按座位覆盖（state.earlyK[seat]）：同局 A/B 用，默认仍是 EARLY_STOP。
+      // earlyOff 是「整个关掉」（看满预算），earlyK 是「换一个阈值」，两回事。
+      const kEarly = (state.earlyK && state.earlyK[seat] != null) ? state.earlyK[seat] : EARLY_STOP;
+      if (kEarly > 0 && samples >= 2 && !(state.earlyOff && state.earlyOff[seat])) {
         if (chosenKey !== null && chosenKey === stableKey) stableRounds += 1;
         else { stableRounds = 0; stableKey = chosenKey; }
-        if (stableRounds >= EARLY_STOP) { EARLY_STATS.stopped += 1; break; }
+        if (stableRounds >= kEarly) { EARLY_STATS.stopped += 1; break; }
       }
     }
 
@@ -5231,6 +5414,7 @@
         const key2 = `${c.from}>${c.to}`;
         const finalI = mean - riskNow * Math.sqrt(Math.max(0, st2.sq / st2.n - mean * mean))
           + (priorOf.get(key2) || 0) * 0.01 + (coopOf.get(key2) || 0) + (tacticOf.get(key2) || 0)
+          + (resvOf.get(key2) || 0) + (hpOf.get(key2) || 0)
           - (isRevisit(state, c) && !G.pieceAt(state, c.to) ? 2000 : 0);
         if (finalI < chosenScore - band) return;
         const pr = priorOf.get(key2) || 0;
@@ -5244,6 +5428,13 @@
     }
 
     if (best) {
+      // 先验到底有没有"拍板"：选中那一手恰好是先验最高的那一手
+      if (hpCtx && HP && chosenKey && HP.STATS) {
+        let hk = null, hv = -Infinity;
+        for (const [k, vv] of hpOf) if (vv > hv) { hv = vv; hk = k; }
+        HP.STATS.ties = (HP.STATS.ties || 0) + 1;
+        if (hk === chosenKey) HP.STATS.hit = (HP.STATS.hit || 0) + 1;
+      }
       if (tacticPhase && TACT) { try { TACT.commit(state, seat, best, tacticPhase); } catch (err) { /* 统计而已 */ } }
       if (relayBonus(state, seat, best) > 0) DOM_STATS.relay += 1;
       if (homeCoverBonus(state, seat, best) > 0) DOM_STATS.home += 1;
@@ -5272,6 +5463,7 @@
           domRisk: domRiskOf.get(key) || 0,
           coop: coopOf.get(key) || 0,
           tactic: tacticOf.get(key) || 0,
+          resv: resvOf.get(key) || 0,
           final: st.n ? mean - riskNow * spread + (priorOf.get(key) || 0) * 0.01
             + (coopOf.get(key) || 0) + (tacticOf.get(key) || 0) : NaN,
         };
@@ -5360,14 +5552,17 @@
     };
   }
 
+  // 人类走法先验的统计（human_prior.js 里的同一个对象，关闭时没人写）
+  const HP_STATS = (root.JunqiHumanPrior && root.JunqiHumanPrior.STATS) || { calls: 0, scored: 0, skipped: 0, plies: 0 };
+
   const API = {
     choose, analyze, applyOpening, applyOpenings, PROFILES, forceReport,
     _internals: { buildWorld, generateMoves, simulate, evaluate, search, inferDomains, PROFILES,
       flagThreats, isThreatRelief, FLAG_STATS, rankMemory, RANK_NUM, isKnownSuicide, knownFloor, ASSIGN,
       flagRisk, canReachCell, beatsProb, enemyDominants, dominantScore, BASE_CORNERS,
-      isUselessHqMove, applyZoneSoft, ZQ_SOFT_ON, ZONE_MEAN, applyZonePair, ZPAIR_ON, ZPAIR_STATS, cellIdxOf, bigProbOf, applyEatPrior, lambdaOf, KAPPA, rootPrior, FLOOR_ADD, worldTau, uncertaintyOf, ADAPT_STATS, COOP_STATS, coopBonus, coopIntruders, coopWeight, root, GRAB_STATS, applyGrabPrior, ENT_MAX, EAT_ANY, jointRows, evidenceRowsOnly, JOINT_SOFT, JOINT_ON, JOINT_STATS, isRealEngineer, ownLatentDomain, EAT_ON, EAT_K, EAT_STATS, DEFPRIOR_ON, DEFPRIOR_K, BATTLE_STATS, isEarlyEngineerRaid, engineerMineProb, ENG_RAID, ENG_PM, domRisk, relayBonus, pincerBonus, PINCER_BONUS, homeCoverBonus, distractBonus,
+      isUselessHqMove, applyZoneSoft, ZQ_SOFT_ON, ZONE_MEAN, applyZonePair, ZPAIR_ON, ZPAIR_STATS, cellIdxOf, bigProbOf, applyEatPrior, lambdaOf, KAPPA, rootPrior, FLOOR_ADD, worldTau, uncertaintyOf, ADAPT_STATS, COOP_STATS, coopBonus, coopIntruders, coopWeight, root, GRAB_STATS, applyGrabPrior, CAMP_STATS, applyCampPrior, DWELL_STATS, applyDwellPrior, CAMP_ON, DWELL_ON, ENT_MAX, EAT_ANY, jointRows, evidenceRowsOnly, JOINT_SOFT, JOINT_ON, JOINT_STATS, isRealEngineer, ownLatentDomain, EAT_ON, EAT_K, EAT_STATS, DEFPRIOR_ON, DEFPRIOR_K, BATTLE_STATS, isEarlyEngineerRaid, engineerMineProb, GATE_STATS, GATE1_ON, GATE1_RANK, GATE1_P, ENG_RAID, ENG_PM, domRisk, relayBonus, pincerBonus, PINCER_BONUS, homeCoverBonus, distractBonus,
       beliefRows, beliefRowsView, formationPosterior, formationPriorRow,
-      CAMP_ESC, RISK_K, MINE_STOP, ENG_HOLD, TACTIC_ON, QS_ON, QS_MAX, QS_WIDTH, HVT_RANK, BOMB_PAY_RANK, BOMB_EAT_K, BOMB_HOLD_K, TAC_STATS, QS_DEF, EARLY_STOP, STABLE_K, EARLY_STATS, VERIFY_ON, VERIFY_EXT, VERIFY_MAX, VERIFY_STATS, bombRecaptureAvailable, hvtTargets, qsearch, generateCaptures, QS_MIN, initPosOf, ZONEQ_ON, ZONE_CAP, zoneOfPos, zoneQuota, ZONEQ_STATS, ZONE_ON, ZONE_SOFT, ZONE_MARGIN, ZCAP, zoneOfNode, zoneLedger, zoneSoftOf, ZONE_STATS, PROBE_K, probeWeight, PROBE_W, POS_OPEN_PLIES, POS_COLS, posPriorRow, SEARCH_STATS, buildWorldTruth, ORACLE, MASK_OPP, hiddenIdsOf, makeMaskView, applyView, restoreView, beliefMatrix, MATRIX_ON, FATE_ON, TRACK_ON, QUOTA_ON, WORLD_MATRIX, WORLD_LAP, LAP_BASE, LAP_SWAPS, LAP_MARG, assignTypesLAP, assignTypesMarginal, swapSample, worldPriors, lapBaseCached, quotaPropagate, fatePriorRow, fateState, trackPriorRow, trackStats, seatPools, ipfFit, applyPrior, mulPrior, TYPES,
+      CAMP_ESC, RISK_K, MINE_STOP, ENG_HOLD, TACTIC_ON, QS_ON, QS_MAX, QS_WIDTH, HVT_RANK, BOMB_PAY_RANK, BOMB_EAT_K, BOMB_HOLD_K, TAC_STATS, QS_DEF, EARLY_STOP, STABLE_K, EARLY_STATS, HP_STATS, VERIFY_ON, VERIFY_EXT, VERIFY_MAX, VERIFY_STATS, bombRecaptureAvailable, hvtTargets, qsearch, generateCaptures, QS_MIN, initPosOf, ZONEQ_ON, ZONE_CAP, zoneOfPos, zoneQuota, ZONEQ_STATS, ZONE_ON, ZONE_SOFT, ZONE_MARGIN, ZCAP, zoneOfNode, zoneLedger, zoneSoftOf, ZONE_STATS, PROBE_K, probeWeight, PROBE_W, POS_OPEN_PLIES, POS_COLS, posPriorRow, SEARCH_STATS, buildWorldTruth, ORACLE, MASK_OPP, hiddenIdsOf, makeMaskView, applyView, restoreView, beliefMatrix, MATRIX_ON, FATE_ON, TRACK_ON, QUOTA_ON, WORLD_MATRIX, WORLD_LAP, LAP_BASE, LAP_SWAPS, LAP_MARG, assignTypesLAP, assignTypesMarginal, swapSample, worldPriors, lapBaseCached, quotaPropagate, fatePriorRow, fateState, trackPriorRow, trackStats, seatPools, ipfFit, applyPrior, mulPrior, TYPES,
       DOM_STATS, ALLY_OF, forceLedger, beliefProbs, rowValue, FORCE_VALUE, STANDARD_POOL,
       REL_BY_RANK, pieceExpect, FORCE_STATS, FORCE_EDGE_SCALE, forceReport, refineRow,
       STYLE_STATS, pickStyle, dominantCandidates },

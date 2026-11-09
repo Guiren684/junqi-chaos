@@ -378,7 +378,7 @@
   }
 
   // 记录一次阵亡：victim 被 bySeat 消灭。同归于尽时双方各记一次。
-  function recordDeath(state, victim, bySeat) {
+  function recordDeath(state, victim, bySeat, killer) {
     if (!state || !state.stats || !victim) return;
     const t = victim.actualType || victim.type || "unknown";
     const val = SCORE_VALUE[t] || 0;
@@ -396,6 +396,11 @@
       l.lossPieces += 1;
       l.lossScore += val;
       if (isFlag) l.flagLost += 1;
+    }
+    // DLC 钩子：阵亡后触发被动卡（因粮于敌 / 笑里藏刀 / 晋级 / 勇冠三军）
+    // killer 要传：只有知道"是哪枚子杀的"，才能做"每杀一人升一级"
+    if (global.JunqiDLC && state.dlc && state.dlc.on && global.JunqiDLC.onDeath) {
+      global.JunqiDLC.onDeath(state, victim, bySeat, killer);
     }
   }
 
@@ -511,6 +516,8 @@
       recordHistory: !!state.recordHistory,
       battles: (state.battles || []).map((b) => Object.assign({}, b)),
       moveTape: (state.moveTape || []).map((m) => Object.assign({}, m)),
+      // 卡牌使用记录（DLC 才有；没有 DLC 时是空数组，不影响旧存档）
+      cardLog: (state.cardLog || []).map((c) => Object.assign({}, c)),
       aiStyle: state.aiStyle || "mixed",
       aiProfiles: Object.assign({}, state.aiProfiles || {}),
       pieces: state.pieces.map((p) => {
@@ -565,6 +572,7 @@
       historyFrames: [],
       battles: Array.isArray(obj.battles) ? obj.battles.map((b) => Object.assign({}, b)) : [],
       moveTape: Array.isArray(obj.moveTape) ? obj.moveTape.map((m) => Object.assign({}, m)) : [],
+      cardLog: Array.isArray(obj.cardLog) ? obj.cardLog.map((c) => Object.assign({}, c)) : [],
       aiStyle: obj.aiStyle || "mixed",
       aiProfiles: Object.assign({}, obj.aiProfiles || {}),
     };
@@ -793,6 +801,11 @@
   }
 
   function resolveBattle(attacker, defender, inHq = false, mode = "chaos") {
+    // DLC 钩子：有技能状态影响时接管结算；返回 null 则走原逻辑
+    if (global.JunqiDLC && global.JunqiDLC.battleOverride) {
+      const dv = global.JunqiDLC.battleOverride(attacker, defender, inHq, mode);
+      if (dv) return dv;
+    }
     if (!defender) return "move";
     if (defender.type === "flag") return attacker.type === "bomb" ? "both" : "attacker";
     if (inHq) return attacker.type === "bomb" ? "both" : "attacker";
@@ -998,34 +1011,38 @@
         attacker: attacker.id, defender: defender.id, outcome, inHq,
         attType: attacker.type, attSeat: attacker.owner,
       });
+      // DLC 钩子：一场战斗结束后（三板斧要在这里扣次数）
+      if (global.JunqiDLC && state.dlc && state.dlc.on && global.JunqiDLC.onBattle) {
+        global.JunqiDLC.onBattle(state, attacker, defender, outcome);
+      }
       // 除工兵主动出击外，不公开对方棋子的身份
       const isEngineerScout = attacker.type === "engineer" && outcome === "defender"
         && defender.type !== "mine" && defender.type !== "bomb";
       if (isEngineerScout) defender.revealedTo = teamOf(seat);
 
       if (defender.type === "flag") {
-        recordDeath(state, defender, seat);
+        recordDeath(state, defender, seat, attacker);
         killPiece(defender);
         state.hqCaptured[defender.owner].add(to);
-        if (attacker.type === "bomb") { recordDeath(state, attacker, defender.owner); killPiece(attacker); }
+        if (attacker.type === "bomb") { recordDeath(state, attacker, defender.owner, defender); killPiece(attacker); }
         else attacker.position = to;
         message = `${B.SEAT_NAMES[seat]} 的棋子挖掉 ${B.SEAT_NAMES[defender.owner]} 的军旗！`;
         sound = "dead";
       } else if (outcome === "both") {
-        recordDeath(state, attacker, defender.owner);
-        recordDeath(state, defender, seat);
+        recordDeath(state, attacker, defender.owner, defender);
+        recordDeath(state, defender, seat, attacker);
         killPiece(attacker); killPiece(defender);
         message = "双方棋子同归于尽。";
         sound = "equal";
       } else if (outcome === "attacker") {
-        recordDeath(state, defender, seat);
+        recordDeath(state, defender, seat, attacker);
         killPiece(defender);
         attacker.position = to;
         if (targetNode.kind === "hq") state.hqCaptured[targetNode.seat].add(to);
         message = `${B.SEAT_NAMES[seat]} 的棋子吃掉对方一个棋子。`;
         sound = "attack";
       } else {
-        recordDeath(state, attacker, defender.owner);
+        recordDeath(state, attacker, defender.owner, defender);
         killPiece(attacker);
         if (isEngineerScout) {
           message = `${B.SEAT_NAMES[seat]} 的工兵侦察了 ${B.SEAT_NAMES[defender.owner]} 的一个棋子。`;

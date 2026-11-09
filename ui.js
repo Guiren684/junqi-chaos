@@ -496,6 +496,37 @@
         <div class="rc-note">这块是 AI 自己算的：敌方还剩几个是精确的，值多少是按身份域估的。</div>`;
       resultGrid.appendChild(box);
     }
+    // 战术卡使用清单（只有开过 DLC 的对局才有记录，没有就整块不出现）
+    const cardLog = state.cardLog || [];
+    if (cardLog.length) {
+      const box = document.createElement("div");
+      box.className = "result-card card-log-card";
+      const rows = ["south", "east", "north", "west"].map((seat) => {
+        const list = cardLog.filter((c) => c.seat === seat);
+        if (!list.length) {
+          return `<div class="rc-line"><span>${B.SEAT_NAMES[seat].slice(0, 1)}方</span>`
+            + `<b style="font-weight:400;color:#64748b">未用牌</b></div>`;
+        }
+        // 同名同级的合并成「炸药包Ⅱ ×2」，按打出先后排
+        const agg = new Map();
+        for (const c of list) {
+          const k = c.cardId + "|" + (c.tier || 1);
+          const cur = agg.get(k);
+          if (cur) cur.n += 1;
+          else agg.set(k, { name: c.name, tier: c.tier || 1, n: 1, dev: !!c.dev });
+        }
+        const txt = [...agg.values()].map((x) => x.name + "ⅠⅡⅢ"[(x.tier || 1) - 1]
+          + (x.n > 1 ? " ×" + x.n : "") + (x.dev ? "(DEV)" : "")).join("、");
+        return `<div class="rc-line" style="align-items:flex-start"><span>${B.SEAT_NAMES[seat].slice(0, 1)}方</span>`
+          + `<b style="font-weight:400;text-align:right;max-width:76%">${txt}</b></div>`;
+      }).join("");
+      const n = cardLog.length;
+      box.innerHTML = `<div class="rc-head"><span class="rc-seat">战术卡</span>`
+        + `<span class="rc-tag">全场 ${n} 次</span></div>${rows}`
+        + `<div class="rc-note">只记已打出的卡，不含手里没用的；每张的等级就是打出时的等级。</div>`;
+      resultGrid.appendChild(box);
+    }
+
     if (resultTeam) {
       const sum = (seats, key) => seats.reduce((a, s2) => a + ((st[s2] && st[s2][key]) || 0), 0);
       const a = ["south", "north"];
@@ -862,6 +893,8 @@
   function render() {
     if (!state) return;
     renderFallen();
+    try { renderDLC(); } catch (e) { /* DLC 出错不影响棋盘渲染 */ }
+    try { devRender(); } catch (e) { /* DEV 出错不影响棋盘渲染 */ }
     const targets = new Set(state.phase === "raise" ? currentRaiseTargets() : legal);
     for (const hl of hlLayer.children) {
       const pos = hl.getAttribute("data-pos");
@@ -1084,7 +1117,14 @@
 
     renderSeatAi();
 
-    logEl.innerHTML = (state.log || []).slice(-14).map((line) => `<div>${line}</div>`).join("");
+    logEl.innerHTML = (state.log || []).slice(-14).map((line) => {
+      const t = String(line);
+      // 战术卡单独上色：对局记录里一眼能看出"这一步不是走子，是打牌"
+      const cls = t.startsWith("【战术·DEV") ? ' class="lg-dev"'
+        : t.startsWith("【战术·被动") ? ' class="lg-passive"'
+          : t.startsWith("【战术") ? ' class="lg-card"' : "";
+      return `<div${cls}>${t}</div>`;
+    }).join("");
     logEl.scrollTop = logEl.scrollHeight;
 
     renderDomains();
@@ -1269,6 +1309,12 @@
       }
       return;
     }
+    // 顺序很重要：**先判"这一下是不是走子/吃子"，再判"是不是在挑卡牌目标"**。
+    // 反过来写就会出事——吃子的目标格上一定站着一枚敌子，
+    // 被 DEV 的选目标逻辑抢走之后，玩家就永远吃不了子（真实踩过的坑）。
+    // 正在为一张卡选目标：这一下点击归卡牌用，不解释成走子
+    if (armed) { handleArmedClick(pos); return; }
+
     if (state.phase !== "playing" || !isHumanTurn()) return;
     const seat = state.turn;
 
@@ -2201,6 +2247,7 @@
     }
     if (window.JunqiAgent) window.JunqiAgent.closeSetup();
     G.startGame(state);
+    dlcInitNow();
     selected = null;
     legal = [];
     hoverPos = null;
@@ -2208,6 +2255,568 @@
     render();
     if (!checkHumanTurn() && state.phase === "playing" && !isHumanTurn()) scheduleAI();
   }
+
+
+  // ---------- DLC 卡牌（?dlc=1 才启用） ----------
+  const DLCX = window.JunqiDLC;
+  const dlcPanelEl = document.getElementById("dlcPanel");
+  const dlcHandEl = document.getElementById("dlcHand");
+  const dlcCountEl = document.getElementById("dlcCount");
+  const dlcMeritEl = document.getElementById("dlcMerit");
+  const dlcConfirmEl = document.getElementById("dlcConfirm");
+  const dlcDraftEl = document.getElementById("dlcDraft");
+  const dlcPickRowEl = document.getElementById("dlcPickRow");
+  let dlcShownOffer = "";
+
+  const chkDlcEl = document.getElementById("chkDlc");
+  if (chkDlcEl) {
+    // 默认勾选就默认开启（分享版把 DLC 设成默认打开，靠这一句生效）
+    if (chkDlcEl.checked) window.__DLC_ON__ = true;
+    if (DLCX && DLCX.enabled && DLCX.enabled()) chkDlcEl.checked = true;
+    chkDlcEl.addEventListener("change", () => {
+      window.__DLC_ON__ = !!chkDlcEl.checked;
+      if (chkDlcEl.checked && DLCX) {
+        if (DLCX.wrap) DLCX.wrap();
+        dlcInitNow();
+      }
+      render();
+    });
+  }
+  function dlcOn() { return !!(DLCX && DLCX.enabled && DLCX.enabled()); }
+  function dlcSeat() { return (state && state.human && state.human !== "none") ? state.human : HUMAN; }
+  function dlcInitNow() {
+    if (!dlcOn() || !state) return;
+    // wrap 是幂等的：无论从勾选框、URL 参数还是默认勾选开启，都要保证 AI 出牌被挂上
+    try { if (DLCX.wrap) DLCX.wrap(); } catch (e) { /* 忽略 */ }
+    try { DLCX.init(state, { aiPlays: true }); } catch (e) { /* 不打断对局 */ }
+  }
+
+  function renderDLC() {
+    if (!dlcPanelEl) return;
+    if (!dlcOn() || !state || !state.dlc || !state.dlc.on) { dlcPanelEl.classList.add("hidden"); return; }
+    dlcPanelEl.classList.remove("hidden");
+
+    const seat = dlcSeat();
+    const hand = (state.dlc.hands && state.dlc.hands[seat]) || [];
+    if (dlcMeritEl) dlcMeritEl.textContent = String((state.dlc.merit && state.dlc.merit[seat]) || 0);
+    if (dlcCountEl) dlcCountEl.textContent = devOn() ? (hand.length + " 张") : (hand.length + "/4");
+
+    // 手牌
+    if (dlcHandEl) {
+      dlcHandEl.innerHTML = "";
+      if (!hand.length) dlcHandEl.innerHTML = '<div class="d" style="opacity:.5">（暂无手牌）</div>';
+      hand.forEach((h) => {
+        const c = DLCX.cardOf(h.id);
+        if (!c) return;
+        const el = document.createElement("div");
+        el.className = "dlc-card";
+        const setupOnly = c.when === "setup";
+        let desc = { effect: "", full: c.name };
+        try { desc = DLCX.describeCard(h.id, h.tier) || desc; } catch (e) { /* 忽略 */ }
+        const compH = DLCX.cardComplexity ? DLCX.cardComplexity(h.id) : { level: 0, label: "简单" };
+        el.innerHTML = '<div class="t"><span>' + c.name + '</span><span class="tr">' + "ⅠⅡⅢ"[h.tier - 1] + ' 级</span></div>'
+          + '<div class="d">' + c.id + ' · ' + c.book + ' · ' + c.tag
+          + ' · <span class="cx cx' + compH.level + '">' + compH.label + '</span>'
+          + (setupOnly ? ' · 布阵阶段生效' : '') + '</div>'
+          + '<div class="e">' + desc.effect + '</div>';
+        el.title = desc.full + "（点一下使用）";
+        el.onclick = setupOnly ? null : () => armCard(h.id);
+        if (setupOnly) el.style.opacity = ".55";
+        if (armed && armed.cardId === h.id) el.className = "dlc-card armed";
+        dlcHandEl.appendChild(el);
+      });
+    }
+
+    // 已经生效的被动战术（抽到即生效，不进手牌，但得让人看得见）
+    const pasEl = document.getElementById("dlcPassive");
+    if (pasEl) {
+      const list = (state.dlc.passiveTaken && state.dlc.passiveTaken[seat]) || [];
+      if (!list.length) {
+        pasEl.classList.add("hidden");
+      } else {
+        pasEl.classList.remove("hidden");
+        pasEl.innerHTML = "已生效：" + list.map((x) => {
+          const c = DLCX.cardOf(x.id);
+          return c ? '<span class="tag">' + c.name + "</span>" : "";
+        }).join("、");
+      }
+    }
+
+    // 正在选目标时给一句提示
+    if (dlcConfirmEl) {
+      if (armed) {
+        const a = armed;
+        const done = armedPicks(a).length;
+        const where = a.step === 1 ? "目标" : "落点";
+        dlcConfirmEl.innerHTML = '<div><b>' + a.name + '</b>：请在棋盘上点' + where
+          + '（' + done + "/" + a.need + '，绿格为可选；再点已选的格子可取消）</div>'
+          + '<div style="opacity:.6;margin-top:4px">点这张卡本身或按 Esc 放弃</div>';
+        dlcConfirmEl.classList.remove("hidden");
+      } else if (!dlcShownOffer) {
+        dlcConfirmEl.classList.add("hidden");
+        dlcConfirmEl.innerHTML = "";
+      }
+    }
+
+    // 三选一
+    const offer = state.dlc.offers && state.dlc.offers[seat];
+    if (offer && !offer.taken && state.phase === "playing") {
+      const key = offer.reason + "@" + (offer.three || []).map((x) => x.id).join(",");
+      if (key !== dlcShownOffer) {
+        dlcShownOffer = key;
+        dlcShowDraft(offer);
+      }
+    } else if (dlcDraftEl) {
+      dlcDraftEl.classList.add("hidden");
+      dlcShownOffer = "";
+    }
+  }
+
+  function dlcShowDraft(offer) {
+    if (!dlcDraftEl || !dlcPickRowEl) return;
+    dlcPickRowEl.innerHTML = "";
+    (offer.three || []).forEach((x) => {
+      const c = DLCX.cardOf(x.id);
+      if (!c) return;
+      const el = document.createElement("div");
+      el.className = "pc";
+      let desc = { effect: "", full: c.name };
+      try { desc = DLCX.describeCard(x.id, x.tier) || desc; } catch (e) { /* 文案失败不影响选牌 */ }
+      const compD = DLCX.cardComplexity ? DLCX.cardComplexity(x.id) : { level: 0, label: "简单", why: [] };
+      el.innerHTML = '<div class="id">' + c.id + ' · ' + c.book + '</div>'
+        + '<div class="nm">' + c.name + '</div>'
+        + '<div class="tr">' + "ⅠⅡⅢ"[x.tier - 1] + ' 级'
+        + ' <span class="cx cx' + compD.level + '">' + compD.label + '</span></div>'
+        + '<div class="tag">' + c.tag + '</div>'
+        + '<div class="ef">' + desc.effect + '</div>';
+      el.title = desc.full;
+      el.onclick = () => {
+        DLCX.take(state, dlcSeat(), x.id);
+        dlcDraftEl.classList.add("hidden");
+        dlcShownOffer = "";
+        render();
+      };
+      dlcPickRowEl.appendChild(el);
+    });
+    // 兜底：三张都渲染不出来时（卡被移除 / id 对不上），这个弹窗会永久挡住棋盘。
+    // 遇到就当作已放弃，直接放行，绝不能让"选牌"把整局卡死。
+    if (!dlcPickRowEl.children.length) {
+      try { DLCX.take(state, dlcSeat(), (offer.three[0] || {}).id); } catch (e) { /* 忽略 */ }
+      offer.taken = offer.taken || "skip";
+      dlcDraftEl.classList.add("hidden");
+      state.log.push("【战术】三选一没有可选项，已自动跳过。");
+      return;
+    }
+    dlcDraftEl.classList.remove("hidden");
+  }
+
+  // ---------- 手牌使用：点卡 →（主动卡）点目标 → 生效 ----------
+  // 设计：DEV 只是"把卡塞进手牌"的开关，不参与棋盘点击；
+  // 手牌只在**自己的回合**能点；被动卡点了立刻生效；主动卡点了进入选目标状态。
+  let armed = null;   // { cardId, name, tier, seat, step, picks, picks2, cands, cands2, need }
+  const NO_PICK_KINDS = ["none", "allOwn", "allEnemy", "peekSpread"];
+
+  function dlcHandEntry(seat, cardId) {
+    const hand = (state.dlc && state.dlc.hands && state.dlc.hands[seat]) || [];
+    return hand.find((h) => h.id === cardId) || null;
+  }
+
+  function dlcNote(text) {
+    if (!state) return;
+    if (!Array.isArray(state.log)) state.log = [];
+    state.log.push("【战术】" + text);
+    state.log = state.log.slice(-200);
+  }
+
+  function cardUseBlocker() {
+    if (!state || state.phase !== "playing") return "现在不在对局中";
+    if (!isHumanTurn()) return "只能在自己的回合使用战术卡";
+    return null;
+  }
+
+  function candPositions(binds) {
+    const out = [];
+    for (const b of binds || []) {
+      if (b.target && b.target.position) out.push(b.target.position);
+      if (b.cells) for (const c of b.cells) out.push(c);
+    }
+    return out;
+  }
+
+  // 这张卡这一手要选几个目标（count 为 0/缺省视作"全部"）
+  function needOf(card, tierLv) {
+    const sel = card.select || {};
+    const tier = (card.tiers && card.tiers[Math.min(2, (tierLv || 1) - 1)]) || {};
+    let n = sel.count;
+    if (typeof n === "string" && n.charAt(0) === "$") n = tier[n.slice(1)];
+    if (n === 0 || n == null) return 0;
+    const num = Number(n);
+    return Number.isFinite(num) && num > 0 ? num : 0;
+  }
+
+  // 点手牌里的卡：被动立即生效；主动进入"选目标"
+  function armCard(cardId) {
+    if (armed && armed.cardId === cardId) { cancelArm(); return; }
+    const block = cardUseBlocker();
+    if (block) { dlcNote(block); render(); return; }
+    const seat = dlcSeat();
+    const entry = dlcHandEntry(seat, cardId);
+    const c = DLCX.cardOf(cardId);
+    if (!entry || !c) return;
+    const tier = entry.tier || 1;
+
+    if (c.when === "passive") {
+      let r = null;
+      try { r = DLCX.usePassive(state, seat, cardId); } catch (e) { r = { ok: false, msg: e.message }; }
+      finishCard(r);
+      return;
+    }
+
+    const kind = (c.select && c.select.kind) || "none";
+    if (NO_PICK_KINDS.indexOf(kind) >= 0) {          // 全场/无目标：点了就用
+      executeCard(cardId, tier, null, null);
+      return;
+    }
+    let cands = [];
+    try { cands = DLCX.bindingsFor(state, seat, cardId, 1, [], tier, true) || []; } catch (e) { cands = []; }
+    if (!cands.length) { dlcNote("「" + c.name + "」现在没有可选的目标"); render(); return; }
+
+    const want = needOf(c, tier);
+    const need = want > 0 ? Math.min(want, cands.length) : cands.length;
+    armed = { cardId, name: c.name, tier, seat, step: 1, picks: [], picks2: [], cands, cands2: null, need };
+    selected = null;
+    legal = candPositions(cands);
+    hoverPos = null;
+    playSound("select");
+    render();
+  }
+
+  function cancelArm() {
+    if (!armed) return;
+    armed = null;
+    legal = [];
+    hoverPos = null;
+    render();
+  }
+
+  // 已选的数量（第 2 步单独算）
+  function armedPicks(a) { return a.step === 1 ? a.picks : a.picks2; }
+
+  function handleArmedClick(pos) {
+    const a = armed;
+    const list = a.step === 1 ? a.cands : (a.cands2 || []);
+    const hit = list.find((b) => (b.target && b.target.position === pos)
+      || (b.cells && b.cells.indexOf(pos) >= 0));
+    if (!hit) {
+      dlcNote("这里不是「" + a.name + "」能选的目标（再点一次卡片可放弃）");
+      render();
+      return;
+    }
+    const picks = armedPicks(a);
+    const at = picks.indexOf(hit);
+    if (at >= 0) { picks.splice(at, 1); render(); return; }   // 再点一次取消这一枚
+    picks.push(hit);
+    if (picks.length < a.need) { render(); return; }
+    advanceArm();
+  }
+
+  // 收满目标：有第二选择器就进第二步，否则直接执行
+  function advanceArm() {
+    const a = armed;
+    const c = DLCX.cardOf(a.cardId);
+    if (a.step === 1 && c && c.sel2) {
+      let c2 = [];
+      try { c2 = DLCX.bindingsFor(state, a.seat, a.cardId, 2, a.picks, a.tier, true) || []; } catch (e) { c2 = []; }
+      if (c2.length) {
+        a.step = 2;
+        a.cands2 = c2;
+        a.picks2 = [];
+        const w2 = needOf(c, a.tier);
+        a.need = w2 > 0 ? Math.min(w2, c2.length) : c2.length;
+        legal = candPositions(c2);
+        render();
+        return;
+      }
+      // 没得选就用系统默认落点
+    }
+    executeCard(a.cardId, a.tier, a.picks, a.picks2 && a.picks2.length ? a.picks2 : null);
+  }
+
+  function executeCard(cardId, tier, forced1, forced2) {
+    const seat = dlcSeat();
+    let r = null;
+    try { r = DLCX.play(state, seat, cardId, tier, forced1, false, forced2); } catch (e) { r = { ok: false, msg: e.message }; }
+    finishCard(r);
+  }
+
+  function finishCard(r) {
+    armed = null;
+    selected = null;
+    legal = [];
+    hoverPos = null;
+    if (dlcConfirmEl) { dlcConfirmEl.classList.add("hidden"); dlcConfirmEl.innerHTML = ""; }
+    if (r && r.ok) {
+      playSound("capture");            // 日志由 DLC 自己写（带等级与目标）
+    } else {
+      state.log.push("【战术】打不出：" + ((r && r.msg) || "未知原因"));
+    }
+    render();
+    // 卡生效后立刻回到正常对局：轮到 AI 就继续走，轮到自己但没子可动就自动跳过
+    if (state.phase === "playing") {
+      if (isHumanTurn()) checkHumanTurn();
+      else scheduleAI();
+    }
+  }
+
+  // ---------- 开发者模式：随时取任意卡生效 ----------
+  const devPanelEl = document.getElementById("devPanel");
+  const devListEl = document.getElementById("devList");
+  const devSearchEl = document.getElementById("devSearch");
+  const devBookEl = document.getElementById("devBook");
+  const devComplexEl = document.getElementById("devComplex");
+  const devSummaryEl = document.getElementById("devSummary");
+  const devSeatEl = document.getElementById("devSeat");
+  const devTiersEl = document.getElementById("devTiers");
+  const devStatusEl = document.getElementById("devStatus");
+  const devStatusNEl = document.getElementById("devStatusN");
+  const devLogEl = document.getElementById("devLog");
+  const chkDevEl = document.getElementById("chkDev");
+  let devTier = 1;
+  let devSnap = null;          // 每次 DEV 执行前的局面快照
+  const devLogLines = [];
+
+  function devOn() { return !!window.__DEV_ON__ && !!(DLCX && DLCX.devPlay); }
+
+  function devLog(cls, text) {
+    devLogLines.push({ cls, text });
+    if (devLogLines.length > 60) devLogLines.shift();
+    if (devLogEl) {
+      const d = document.createElement("div");
+      d.className = cls;
+      d.textContent = text;
+      devLogEl.appendChild(d);
+      while (devLogEl.children.length > 60) devLogEl.removeChild(devLogEl.firstChild);
+      devLogEl.scrollTop = devLogEl.scrollHeight;
+    }
+  }
+
+  function devSeat() {
+    return (devSeatEl && devSeatEl.value) || dlcSeat();
+  }
+
+  function devRenderList() {
+    if (!devListEl || !devOn() || !DLCX.allCards) return;
+    const q = (devSearchEl && devSearchEl.value || "").trim().toLowerCase();
+    const book = (devBookEl && devBookEl.value) || "";
+    const cx = (devComplexEl && devComplexEl.value) || "";
+    // 全库难度分布：让"简单/复杂各有多少"一眼可见
+    if (devSummaryEl && DLCX.cardComplexity) {
+      const all = DLCX.allCards();
+      const n = [0, 0, 0];
+      for (const c of all) n[DLCX.cardComplexity(c.id).level] += 1;
+      devSummaryEl.innerHTML = "共 <b>" + all.length + "</b> 张："
+        + '<span class="cx cx0">简单 ' + n[0] + "</span> "
+        + '<span class="cx cx1">普通 ' + n[1] + "</span> "
+        + '<span class="cx cx2">复杂 ' + n[2] + "</span>";
+    }
+    const cards = DLCX.allCards().filter((c) => {
+      if (book && c.book !== book) return false;
+      if (cx !== "" && DLCX.cardComplexity && DLCX.cardComplexity(c.id).level !== Number(cx)) return false;
+      if (!q) return true;
+      const hint = (c.ai && c.ai.hint) || "";
+      return (c.id + c.name + (c.tag || "") + hint).toLowerCase().includes(q);
+    });
+    devListEl.innerHTML = "";
+    for (const c of cards) {
+      const el = document.createElement("div");
+      el.className = "dev-card";
+      const tag = c.when === "passive" ? '<span class="p">被动</span>' : "";
+      let desc = { full: c.name, effect: "" };
+      try { desc = DLCX.describeCard(c.id, devTier) || desc; } catch (e) { /* 忽略 */ }
+      const comp = DLCX.cardComplexity ? DLCX.cardComplexity(c.id) : { level: 0, label: "简单", why: [] };
+      el.innerHTML = '<div class="l">' + c.id + " " + c.name
+        + '<span class="cx cx' + comp.level + '">' + comp.label + "</span></div>"
+        + '<div class="r"><span class="k">' + c.tag + "</span> " + tag + "</div>"
+        + '<div class="ef">' + (desc.effect || "") + "</div>";
+      if (comp.why && comp.why.length) el.title += "\n难度：" + comp.why.join("、");
+      el.title = c.id + " " + desc.full + "\n" + (c.book || "") + " · " + (c.when === "passive" ? "被动" : "主动");
+      el.onclick = () => devExec(c);
+      devListEl.appendChild(el);
+    }
+    if (!cards.length) devListEl.innerHTML = '<div class="dev-card" style="opacity:.5">没有匹配的卡</div>';
+  }
+
+  // state 里有两类结构 JSON 存不下：hqCaptured / domain 是 Set，repCounts 是 Map。
+  // 直接 JSON.stringify 会变成 {}，回滚后第一次走子就崩在 repCounts.get is not a function。
+  function devSnapSave() {
+    try {
+      devSnap = JSON.stringify(state, (k, v) => {
+        if (v instanceof Set) return { __set: [...v] };
+        if (v instanceof Map) return { __map: [...v] };
+        return v;
+      });
+    } catch (e) { devSnap = null; }
+  }
+
+  function devSnapRestore() {
+    if (!devSnap) return false;
+    let obj = null;
+    try {
+      obj = JSON.parse(devSnap, (k, v) => {
+        if (v && v.__set) return new Set(v.__set);
+        if (v && v.__map) return new Map(v.__map);
+        return v;
+      });
+    } catch (e) { return false; }
+    // 保留 state 的对象引用（其它闭包都指着它），只替换内容
+    for (const k of Object.keys(state)) delete state[k];
+    Object.assign(state, obj);
+    return true;
+  }
+
+  // DEV 列表点一下 = 加进手牌（被动卡没有目标，直接生效）
+  function devExec(card) {
+    if (!state || !state.dlc || !state.dlc.on) { devLog("no", "✗ 先开启 DLC"); return; }
+    if (state.phase !== "playing") {
+      devLog("no", "✗ 现在是对局外（" + (state.phase || "未开局") + "），开局后再试");
+      return;
+    }
+    const seat = devSeat();
+    devSnapSave();
+    let r = null;
+    try { r = DLCX.devGive(state, seat, card.id, devTier); } catch (e) { r = { ok: false, msg: e.message }; }
+    if (r && r.ok) {
+      devLog("ok", "＋ " + card.id + " " + card.name + " " + "ⅠⅡⅢ"[devTier - 1] + " 级 已加入手牌"
+        + (r.passive ? "（被动卡，点一下生效）" : "（点卡片使用）"));
+      render();
+    } else {
+      devLog("no", "✗ " + card.id + " " + card.name + "：" + ((r && r.msg) || "未知原因"));
+    }
+  }
+
+  // DEV 列表点一下 = 加进手牌（被动卡没有目标，直接生效）
+  function devExec(card) {
+    if (!state || !state.dlc || !state.dlc.on) { devLog("no", "✗ 先开启 DLC"); return; }
+    if (state.phase !== "playing") {
+      devLog("no", "✗ 现在是对局外（" + (state.phase || "未开局") + "），开局后再试");
+      return;
+    }
+    const seat = devSeat();
+    devSnapSave();
+    let r = null;
+    try { r = DLCX.devGive(state, seat, card.id, devTier); } catch (e) { r = { ok: false, msg: e.message }; }
+    if (r && r.ok) {
+      devLog("ok", "＋ " + card.id + " " + card.name + " " + "ⅠⅡⅢ"[devTier - 1] + " 级 已加入手牌"
+        + (r.passive ? "（被动卡，点一下生效）" : "（点卡片使用）"));
+      render();
+    } else {
+      devLog("no", "✗ " + card.id + " " + card.name + "：" + ((r && r.msg) || "未知原因"));
+    }
+  }
+
+  function devRenderStatus() {
+    if (!devStatusEl || !devOn() || !state) return;
+    const list = (DLCX.statusList && DLCX.statusList(state)) || [];
+    if (devStatusNEl) devStatusNEl.textContent = String(list.length);
+    devStatusEl.innerHTML = "";
+    if (!list.length) {
+      devStatusEl.innerHTML = '<div style="opacity:.45">（无）</div>';
+      return;
+    }
+    for (const st of list) {
+      const d = document.createElement("div");
+      d.innerHTML = st.key + " · " + st.who
+        + (st.until != null ? ' <span class="u">' + st.until + '手</span>' : "") + st.val;
+      devStatusEl.appendChild(d);
+    }
+  }
+
+  function devRender() {
+    if (!devPanelEl) return;
+    if (!devOn() || !state) { devPanelEl.classList.add("hidden"); return; }
+    devPanelEl.classList.remove("hidden");
+    devRenderStatus();
+  }
+
+  function devToggle(on) {
+    window.__DEV_ON__ = !!on;
+    if (chkDevEl && chkDevEl.checked !== !!on) chkDevEl.checked = !!on;
+    if (on) {
+      // 开发模式默认把 DLC 一起打开
+      if (chkDlcEl && !chkDlcEl.checked) { chkDlcEl.checked = true; chkDlcEl.dispatchEvent(new Event("change")); }
+      devRenderList();
+      devRender();
+    } else if (devPanelEl) {
+      devPanelEl.classList.add("hidden");
+    }
+  }
+
+  // 卷筛选下拉
+  if (devBookEl && DLCX && DLCX.allCards) {
+    const books = [...new Set(DLCX.allCards().map((c) => c.book))];
+    for (const b of books) {
+      const o = document.createElement("option");
+      o.value = b; o.textContent = b;
+      devBookEl.appendChild(o);
+    }
+  }
+  if (chkDevEl) {
+    chkDevEl.addEventListener("change", () => devToggle(chkDevEl.checked));
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F2") { e.preventDefault(); devToggle(!window.__DEV_ON__); }
+    if (e.key === "Escape" && armed) { e.preventDefault(); cancelArm(); }
+  });
+  if (devSearchEl) devSearchEl.addEventListener("input", devRenderList);
+  if (devBookEl) devBookEl.addEventListener("change", devRenderList);
+  if (devComplexEl) devComplexEl.addEventListener("change", devRenderList);
+  if (devTiersEl) {
+    devTiersEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-tier]");
+      if (!btn) return;
+      devTier = Number(btn.dataset.tier);
+      [...devTiersEl.children].forEach((b) => b.classList.toggle("on", b === btn));
+      devRenderList();
+    });
+  }
+  const devCloseEl = document.getElementById("devClose");
+  if (devCloseEl) devCloseEl.onclick = () => devToggle(false);
+  const devMeritEl = document.getElementById("devMerit");
+  if (devMeritEl) devMeritEl.onclick = () => {
+    if (!state || !state.dlc) return;
+    const seat = devSeat();
+    state.dlc.merit = state.dlc.merit || {};
+    state.dlc.merit[seat] = (state.dlc.merit[seat] || 0) + 30;
+    devLog("ok", "军功：" + seat + " +30 → " + state.dlc.merit[seat]);
+    render();
+  };
+  const devUndoEl = document.getElementById("devUndo");
+  if (devUndoEl) devUndoEl.onclick = () => {
+    if (!state) return;
+    if (devSnapRestore()) {
+      devLog("ok", "↶ 已回滚到上一次 DEV 执行前");
+      render();
+    } else {
+      devLog("no", "✗ 没有可回滚的快照");
+    }
+  };
+  const devClearStEl = document.getElementById("devClearSt");
+  if (devClearStEl) devClearStEl.onclick = () => {
+    if (!state) return;
+    const n = DLCX.clearStatuses(state);
+    devLog("ok", "清空持续状态 " + n + " 条");
+    render();
+  };
+  // 也支持 ?dev=1 直接进开发者模式
+  if (typeof location !== "undefined" && /[?&]dev=1/.test(location.search || "")) {
+    devToggle(true);
+  }
+
+  const devClearLogEl = document.getElementById("devClearLog");
+  if (devClearLogEl) devClearLogEl.onclick = () => {
+    devLogLines.length = 0;
+    if (devLogEl) devLogEl.innerHTML = "";
+  };
 
   // ---------- 作弊选子 ----------
   const cheatCounts = {};
@@ -3143,6 +3752,7 @@
     // 沙盘（自定义局面 → 四家对弈），供 tools/sandbox_smoke.js 调用
     enterSandbox, exitSandbox, sandboxStart, sandboxAutoFill, sandboxClearSeat,
     takeoverReplay, enterReplay, exitReplay, showReplayFrame,
+    showResult, closeResult, renderResult,   // 战报：测试要检查"战术卡"那一块
     get sandboxTakeover() { return sandboxTakeover; },
     get replayMode() { return replayMode; },
     get sandboxMode() { return sandboxMode; },

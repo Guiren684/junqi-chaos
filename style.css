@@ -198,6 +198,9 @@ button:disabled { opacity: .35; cursor: not-allowed; }
 }
 .log div { border-bottom: 1px dashed rgba(148,163,184,.08); padding: 2px 0; }
 .log div:last-child { color: #e2e8f0; border-bottom: 0; }
+.log div.lg-card { color: #e0a458; }
+.log div.lg-passive { color: #8fc7a8; }
+.log div.lg-dev { color: #9db4d8; }
 
 .rules {
   border: 1px solid #263041;
@@ -424,6 +427,7 @@ button:disabled { opacity: .35; cursor: not-allowed; }
 .rc-line .pos { color: #8ddc9b; }
 .rc-line .neg { color: #e79b9b; }
 .rc-note { margin-top: 5px; font-size: 11px; color: #7f8fa6; line-height: 1.55; }
+.card-log-card { grid-column: 1 / -1; }
 .result-team { margin-top: 10px; font-size: 12px; color: #cbd5e1; border-top: 1px dashed #24344d; padding-top: 8px; line-height: 1.8; }
 .ai-rows { display: grid; gap: 8px; padding: 2px 0 10px; }
 .ai-row { display: flex; align-items: center; gap: 10px; }
@@ -568,7 +572,7 @@ button.primary { background: #a9792c; border-color: #e2b45a; }
 #board-bg {
   position: absolute;
   inset: 0;
-  background: url("assets/board.png") center / 100% 100% no-repeat;
+  background: url("assets/qq_board.png") center / 100% 100% no-repeat;
   pointer-events: none;
 }
 #board {

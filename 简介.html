@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>四国争霸 2.1 · DLC 版 简介</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #101c2e;
+    --line: #1f3550;
+    --ink: #dbe7f3;
+    --dim: #8fa8bf;
+    --gold: #f0c46a;
+    --green: #7fd4a3;
+    --blue: #7fb6ea;
+    --red: #e79b9b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1100px 700px at 22% 0%, #12314b 0%, #0a1a2a 55%, #06111c 100%);
+    color: var(--ink);
+    font: 15px/1.8 "Noto Sans SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 44px 26px 100px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 8px; }
+  h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: 4px; color: var(--gold); }
+  .sub { color: var(--dim); font-size: 13px; letter-spacing: 1px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 26px 0 6px; }
+  .btn {
+    display: inline-block; padding: 11px 26px; border-radius: 10px; text-decoration: none;
+    font-weight: 700; letter-spacing: 1px; border: 1px solid var(--gold); color: #1b1405;
+    background: linear-gradient(180deg, #f4cf80, #e0a458);
+  }
+  .btn.ghost { background: transparent; color: var(--gold); }
+  .btn:hover { filter: brightness(1.06); }
+  h2 {
+    margin: 44px 0 14px; font-size: 19px; letter-spacing: 2px; color: var(--gold);
+    border-left: 3px solid var(--gold); padding-left: 12px;
+  }
+  h3 { margin: 26px 0 8px; font-size: 15px; color: var(--blue); letter-spacing: 1px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0 8px 22px; padding: 0; }
+  li { margin: 5px 0; }
+  code {
+    background: #0a1522; border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 13px; color: #cfe3f5;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+  th { background: #0d1a28; color: var(--dim); font-weight: 600; }
+  td.n { text-align: right; width: 90px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin: 14px 0;
+  }
+  .tag {
+    display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid rgba(143,199,168,.5); color: var(--green); margin-right: 6px;
+  }
+  .tag.b { border-color: rgba(127,182,234,.5); color: var(--blue); }
+  .tag.r { border-color: rgba(231,155,155,.5); color: var(--red); }
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 14px 0; }
+  .step { background: #0c1a29; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .step b { display: block; color: var(--gold); font-size: 13px; margin-bottom: 4px; letter-spacing: 1px; }
+  .step span { font-size: 13px; color: var(--dim); }
+  .note { color: var(--dim); font-size: 13px; }
+  .kbd { display: inline-block; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 5px; padding: 0 6px; font-size: 12px; color: #dfe9f4; background: #0a1522; }
+  figure { margin: 20px 0 26px; }
+  figure img {
+    display: block; width: 100%; height: auto; border-radius: 10px;
+    border: 1px solid var(--line); box-shadow: 0 14px 36px rgba(0,0,0,.45);
+  }
+  figure.narrow img { max-width: 420px; margin: 0 auto; }
+  figcaption { margin-top: 8px; color: var(--dim); font-size: 12.5px; text-align: center; }
+  .fun { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 12px; margin: 14px 0; }
+  .fun .it { background: #0c1a29; border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; }
+  .fun .it h4 { margin: 0 0 3px; font-size: 15px; color: #eaf3fb; letter-spacing: 1px; }
+  .fun .it .rk { float: right; font-size: 11px; color: var(--gold); opacity: .8; font-weight: 400; }
+  .fun .it .meta { font-size: 11.5px; color: var(--dim); margin-bottom: 7px; }
+  .fun .it .ef { font-size: 13px; color: #cfdeeb; }
+  .fun .it .tip { font-size: 12.5px; color: var(--gold); margin-top: 7px; }
+  .fun .it .warn { font-size: 12px; color: #c9a2a2; margin-top: 5px; }
+  footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>四国争霸 2.1 · DLC 版</h1>
+  <div class="sub">四国军棋 · 135 张战术卡 · 单机四家 AI · 打开即玩</div>
+  <div class="cta">
+    <a class="btn" href="index.html">开始游戏</a>
+    <a class="btn ghost" href="介绍.html">基础玩法（原版说明）</a>
+  </div>
+  <p class="note">双击 <code>index.html</code> 即可开始；本页只是说明，游戏在另一个页面。</p>
+</header>
+
+<h2>这是什么</h2>
+<p>
+  在原来的四国军棋上加了一层<b>战术卡</b>：一场对局里，四家各自会拿到几张“一次性手段”——
+  把排长变成炸弹、把炸弹哑火两回合、往敌方行营里塞一枚钉子、让一枚子三场战斗必胜……
+</p>
+<ul>
+  <li><b>底子不变</b>：一般军棋（标准 25 子）/ 乱战四国，规则、结算、AI 都是原版，卡是外挂的一层。</li>
+  <li><b>卡不白给</b>：每张卡要挑时机、挑目标；能不能打出效果，取决于你看不看得懂局面。</li>
+  <li><b>单机可玩</b>：三个座位由本地 AI 接手，不需要联网、不需要注册。</li>
+</ul>
+
+<figure>
+  <img src="assets/shots/06b-draft-close.png" alt="战术简报：三选一">
+  <figcaption>每局开始时、第 50 / 100 步、以及每次扛旗，都会弹一次「战术简报」——三张里挑一张，手牌上限 4 张</figcaption>
+</figure>
+
+<h2>三步开始</h2>
+<div class="flow">
+  <div class="step"><b>① 打开</b><span>双击 <code>index.html</code>，用 Chrome / Edge 打开最好。</span></div>
+  <div class="step"><b>② 备局</b><span>左上选玩法与座位 → 点「自动布阵」（也可以自己拖）→「开始对局」。</span></div>
+  <div class="step"><b>③ 开打</b><span>控制区的 <b>DLC</b> 默认已勾上；不想要卡就取消勾选，回到纯军棋。</span></div>
+</div>
+<p class="note">
+  开局会弹一次「战术简报」（三选一）；之后在<b>全局第 50 步</b>、<b>第 100 步</b>、以及<b>每次扛旗</b>时各弹一次。
+  手牌最多 4 张。
+</p>
+
+<figure>
+  <img src="assets/shots/02-advice-full.png" alt="开局界面全景">
+  <figcaption>开局后的界面：中间是棋盘，左边是你的四家状态与日志，右边一列从上到下是操作按钮、战术手牌、参谋面板</figcaption>
+</figure>
+
+<h2>战术卡怎么用</h2>
+<p>规则只有三条，记住就不会点错：</p>
+<ol>
+  <li><b>只能在自己的回合用。</b>轮到别人时点卡不会有反应，日志会写一行原因。</li>
+  <li><b>被动卡点一下就生效。</b>这类卡没有目标，名字后面标着「被动」。</li>
+  <li><b>主动卡点完，还要在棋盘上点目标。</b>点完卡片，棋盘上所有合法目标会亮成绿格；点绿格才真正生效。</li>
+</ol>
+<div class="card">
+  <b>操作细节</b>
+  <ul>
+    <li>多目标卡（如「守阵」Ⅲ 级）要收满 2–3 个目标才生效，提示里会写 <code>1/3</code>。</li>
+    <li>「潜伏」「换位」「渗透」这类要选两次：先选自己的子，再选落点/对手。</li>
+    <li>选错了：再点一次已选的格子可取消；<span class="kbd">Esc</span> 或再点一次那张卡，整套放弃。</li>
+    <li>卡生效后会立刻回到正常对局，不用关 DLC、不用再点一次。</li>
+  </ul>
+</div>
+
+<figure class="narrow">
+  <img src="assets/shots/07-hand.png" alt="战术手牌">
+  <figcaption>右栏最下面的「战术手牌」：四张各不相同，卡面直接写着实际效果；点一张就进入使用流程</figcaption>
+</figure>
+
+<h2>卡池：135 张，按上手难度分三档</h2>
+<p>牌分七卷，来源各不相同，但用法统一：</p>
+<table>
+  <tr><th>卷</th><th>张数</th><th>是什么</th></tr>
+  <tr><td>战技</td><td class="n">26</td><td>最直接的那批：炸药包、冷枪、缴枪不杀、三板斧、晋级、降级……</td></tr>
+  <tr><td>孙子</td><td class="n">13</td><td>十三篇各一张，偏判断与结构，几乎没有爆炸效果</td></tr>
+  <tr><td>三十六计</td><td class="n">29</td><td>诡道，“骗”和“限制”最多</td></tr>
+  <tr><td>典故</td><td class="n">22</td><td>成语，看名字就知道大概</td></tr>
+  <tr><td>棋理</td><td class="n">23</td><td>军棋圈自己的黑话：双飞、空炸、假司令、控盘、抗旗……</td></tr>
+  <tr><td>奇想</td><td class="n">10</td><td>实验区：夜战、坑道、无线电静默</td></tr>
+  <tr><td>简术</td><td class="n">12</td><td>教学层：侦察、复制、换衔、硬吃、洞察</td></tr>
+</table>
+
+<p>每张卡带一个<b>上手难度</b>标签（只算操作复杂度，不代表强弱）：</p>
+<table>
+  <tr><th>档位</th><th>张数</th><th>读法</th></tr>
+  <tr><td><span class="tag">简单</span></td><td class="n">52</td><td>点一下就懂，新手直接能用</td></tr>
+  <tr><td><span class="tag b">普通</span></td><td class="n">58</td><td>要选目标 / 要接受代价</td></tr>
+  <tr><td><span class="tag r">复杂</span></td><td class="n">25</td><td>两步选目标，或改了棋盘规则</td></tr>
+</table>
+<p class="note">
+  前几次玩，手牌里优先用绿色的；红色的（瞒天过海、换家、军旗易位、假工兵、潜伏、换位……）先放到残局再试。
+</p>
+
+<h2>最好玩的一批：12 张招牌卡</h2>
+<p>
+  135 张里有一半是「+1 级战力」「冻结两回合」这种稳稳的收益。真正让人记住这一版的是下面这 12 张——
+  它们不是加数值，而是把某一件事的规则改掉。下面写的都是<b>Ⅰ 级</b>的实际效果，升到 Ⅲ 级只会更狠。
+</p>
+
+<h3>头牌：一局里最想抽到的三张</h3>
+<div class="fun">
+  <div class="it">
+    <h4>三板斧<span class="rk">H10 · 战技 · 简单</span></h4>
+    <div class="meta">主动 · 选 1 枚己方工兵及以上的子</div>
+    <div class="ef">指定一子，永久明牌；<b>接下来 3 场战斗必胜、不会阵亡</b>；打完第 3 场后永久变成<b>团长</b>。</div>
+    <div class="tip">连炸弹、地雷、大本营平兑都能压过去——撞上就是一个白吃。Ⅲ 级是 5 场。</div>
+    <div class="warn">代价是全程明牌：对手会算好三场，用小子喂掉、把大子撤走。别拿它去撞空。</div>
+  </div>
+  <div class="it">
+    <h4>缴枪不杀<span class="rk">H07 · 战技 · 普通</span></h4>
+    <div class="meta">主动 · 选与己方子相邻的敌方棋子</div>
+    <div class="ef">把<b>相邻的军长及以下敌子直接变成我方棋子</b>，永久明牌。</div>
+    <div class="tip">四国里最直接的「抢人」：贴上去，对面的师长、军长就换旗了。Ⅲ 级一次抢 2 枚。</div>
+    <div class="warn">只能抢军长及以下；司令抢不动，炸弹地雷也不在名单里。</div>
+  </div>
+  <div class="it">
+    <h4>潜伏<span class="rk">H05 · 战技 · 复杂</span></h4>
+    <div class="meta">主动 · 先选己方子，再选落点</div>
+    <div class="ef">把己方一子<b>送进敌方空着的行营</b>。</div>
+    <div class="tip">行营是全场唯一「谁都能进、不挨打」的格子。一枚师长坐进对手的行营，等于在他家门口钉了个钉子。</div>
+    <div class="warn">敌方行营满了就无处可去；进去以后还得自己走出来接应。</div>
+  </div>
+</div>
+
+<h3>诡道：先把对手的眼睛蒙上</h3>
+<div class="fun">
+  <div class="it">
+    <h4>夜战<span class="rk">R1 · 奇想 · 普通</span></h4>
+    <div class="meta">主动 · 无需选目标</div>
+    <div class="ef"><b>10 个回合内，所有明牌全部失效</b>——连战斗后公布兵种也停。</div>
+    <div class="tip">专治「对面把我半张棋盘都探明了」。你已知的信息还在脑子里，他的记录被清零。</div>
+    <div class="warn">你自己也看不见新情报；别在需要精确算牌的时候开。</div>
+  </div>
+  <div class="it">
+    <h4>假司令<span class="rk">Q3 · 棋理 · 简单</span></h4>
+    <div class="meta">主动 · 选己方营长及以下</div>
+    <div class="ef">这枚子<b>对外显示成司令</b>，持续 2 个回合（Ⅲ 级 5 个回合）。</div>
+    <div class="tip">军棋最老的一招：一枚小子顶着司令的名头站到铁路口，对面的大子会绕，炸弹会提前用掉。</div>
+    <div class="warn">只是「看起来像」：真打起来还是它自己的军衔，被吃就露馅。</div>
+  </div>
+  <div class="it">
+    <h4>空城计<span class="rk">T25 · 三十六计 · 被动</span></h4>
+    <div class="meta">被动 · 抽到即生效</div>
+    <div class="ef">你的<b>大本营内被攻一律判平兑</b>。</div>
+    <div class="tip">最后一道保险：谁来啃大本营都得陪一条命，僵持局里等于白赚一手。</div>
+    <div class="warn">平兑会连着你的守军一起没；军旗还是得靠人守。</div>
+  </div>
+  <div class="it">
+    <h4>无线电静默<span class="rk">R3 · 奇想 · 普通</span></h4>
+    <div class="meta">主动 · 无需选目标</div>
+    <div class="ef">敌方 <b>2 个回合内不能用战术卡</b>。</div>
+    <div class="tip">抢在对手攒了四张牌准备翻盘时按下去，他的整套连招直接哑火。Ⅲ 级 4 个回合。</div>
+    <div class="warn">只封对面两个人，不包括你自己队友——四国里这条很关键。</div>
+  </div>
+</div>
+
+<h3>怪招：把规矩本身改了</h3>
+<div class="fun">
+  <div class="it">
+    <h4>炸药包<span class="rk">H01 · 战技 · 普通</span></h4>
+    <div class="meta">主动 · 选己方排长</div>
+    <div class="ef">这枚排长<b>就地变成炸弹</b>（Ⅲ 级一次 2 枚）。</div>
+    <div class="tip">布局时把排长放在铁路口，开打三步内对面的大子就自己撞上来了。</div>
+    <div class="warn">变完就明摆着是炸弹，只赚第一下。</div>
+  </div>
+  <div class="it">
+    <h4>乌龟阵<span class="rk">Q10 · 棋理 · 普通</span></h4>
+    <div class="meta">主动 · 选己方后两排的小子</div>
+    <div class="ef">把后两排的小子<b>就地变成地雷</b>（Ⅲ 级 3 枚）。</div>
+    <div class="tip">原来是废子的连长、排长，一秒变守家主力；对手的工兵不够用就啃不动。</div>
+    <div class="warn">变雷以后自己也走不了，别把通路堵死。</div>
+  </div>
+  <div class="it">
+    <h4>瞒天过海<span class="rk">T1 · 三十六计 · 复杂</span></h4>
+    <div class="meta">主动 · 选己方地雷</div>
+    <div class="ef">把地雷<b>挪到己方前两排的空地</b>。</div>
+    <div class="tip">所有人的默认假设都是「雷在后两排」。你把雷搬到前线，对面的先锋会自己踩上去。</div>
+    <div class="warn">前两排的雷挡不住奇袭，属于一次性赌博。</div>
+  </div>
+  <div class="it">
+    <h4>七擒七纵<span class="rk">D5 · 典故 · 普通</span></h4>
+    <div class="meta">主动 · 选相邻的军长及以下敌子</div>
+    <div class="ef">敌子<b>转为我方</b>，永久明牌，<b>从此不能再移动</b>。</div>
+    <div class="tip">和「缴枪不杀」同类，但换来的是个不动的钉子——正好用来堵路口、守行营。</div>
+    <div class="warn">不能动的子也救不回来，位置选错就白送。</div>
+  </div>
+  <div class="it">
+    <h4>借兵<span class="rk">J6 · 简术 · 普通</span></h4>
+    <div class="meta">主动 · 选盟友的棋子</div>
+    <div class="ef">把<b>队友的一枚子拿过来</b>，永久明牌（Ⅲ 级 2 枚）。</div>
+    <div class="tip">四国才有的荒唐事：北方快被打穿时，把它的军长借到南边来救火。</div>
+    <div class="warn">盟友会少一枚子、阵型出洞；AI 队友不会抗议，但会变弱。</div>
+  </div>
+</div>
+
+<div class="card">
+  <b>另外这几张也值得一试</b>
+  <ul>
+    <li><b>冷枪</b>（H03）：直接移除铁路上「还没打过仗」的敌子——专打刚出家门的大子。</li>
+    <li><b>爆破</b>（H15）：以己方一子为圆心，本格加相邻四格的敌子全部消灭，清场用。</li>
+    <li><b>定时</b>（Q17）：指定一片，3 个回合后引爆，逼对手离开好位置。</li>
+    <li><b>降级</b>（H13）：把这枚子提到军长，然后每个回合掉一级，直到变回工兵——短期尖刀，长期废子。</li>
+    <li><b>纸上谈兵</b>（D18）：弃掉手里一张卡，换 25 军功（Ⅲ 级 45），是「卡不好用就换钱」的出口。</li>
+  </ul>
+</div>
+
+<h3>几个现成的连招</h3>
+<ul>
+  <li><b>三板斧 + 冷枪</b>：先用冷枪清掉铁路上的拦路子，再让三板斧的子顺着铁路直冲大本营，三场必胜刚好够拆三道门。</li>
+  <li><b>乌龟阵 + 瞒天过海</b>：把后两排换成雷，再搬两颗到前线，对手的工兵根本不够拆。</li>
+  <li><b>潜伏 + 缴枪不杀</b>：先把子送进敌方行营，贴着对方主力，下一回合直接抢人。</li>
+  <li><b>夜战 + 假司令</b>：情报全黑的时候，一枚假司令比真司令更吓人。</li>
+</ul>
+
+<h2>两个附带的系统</h2>
+<h3>军功</h3>
+<p>吃子、扛旗、零伤亡会攒“军功”，两个出口：</p>
+<ul>
+  <li><b>30 军功</b> = 三选一时重抽一次（单局最多 2 次）</li>
+  <li><b>40 军功</b> = 把手上一张卡升一级（最高 Ⅲ 级）</li>
+</ul>
+<p class="note">卡有 Ⅰ / Ⅱ / Ⅲ 三级，等级越高效果越强（数量、时长、范围、数值之一）。同一局里 Ⅲ 级卡四家合计最多 2 张。</p>
+
+<h3>对局记录</h3>
+<p>
+  左侧日志会把打出的卡记成一行，例如
+  <code>【战术】南方 打出「炸药包」Ⅱ → 自己的一枚子@南方4-3</code>，
+  主动 / 被动 / 调试三种行用不同颜色区分。战报里另有一块「战术卡」，按座位列出用过的卡与次数。
+  复盘、存档都带着这份记录。
+</p>
+
+<h2>调试用：开发者模式</h2>
+<p>
+  想试某一张卡的效果，不用等抽到它：按 <span class="kbd">F2</span>（或勾控制区的 <b>DEV</b>）打开右下角卡池面板，
+  点任意一张卡就直接<b>加入手牌</b>。面板里还能：
+</p>
+<ul>
+  <li>按卷、按难度筛选，或直接搜卡名/编号/效果文字</li>
+  <li>切 Ⅰ / Ⅱ / Ⅲ 级，切座位（可以给 AI 挂效果，测“对手被加强时怎么打”）</li>
+  <li>看当前所有持续状态、一键清空、↶ 回滚到上一次操作前</li>
+</ul>
+<p class="note">
+  DEV 只负责“发牌”，不改棋盘规则：棋子照常走、照常吃，手牌还是要按上面的规矩点。
+</p>
+
+<h2>文件清单</h2>
+<table>
+  <tr><th>文件</th><th>作用</th></tr>
+  <tr><td><code>index.html</code></td><td>游戏本体，双击即玩</td></tr>
+  <tr><td><code>style.css</code> · <code>ui.js</code></td><td>界面与交互</td></tr>
+  <tr><td><code>board.js</code> · <code>qq_layout.js</code></td><td>棋盘与布局</td></tr>
+  <tr><td><code>game.js</code></td><td>规则与结算（只在战斗处留了一个 DLC 钩子）</td></tr>
+  <tr><td><code>ai.js</code> · <code>ai_gen0.js</code> · <code>tactics.js</code></td><td>AI</td></tr>
+  <tr><td><code>dlc_status.js</code> · <code>dlc_atoms.js</code> · <code>dlc_cards.js</code> · <code>dlc.js</code></td><td>战术卡系统（卡是数据，不改规则）</td></tr>
+  <tr><td><code>assets/</code> · <code>sounds/</code></td><td>棋盘底图与音效</td></tr>
+  <tr><td><code>介绍.html</code></td><td>原版玩法说明（规则、阵型、术语）</td></tr>
+</table>
+<p class="note">整个目录拷走就能玩，不需要安装、不需要服务器。</p>
+
+<h2>常见问题</h2>
+<h3>打开是白屏 / 没有样式</h3>
+<p>确认整个文件夹一起拷走（不要只拷 <code>index.html</code>），并且用浏览器打开而不是用编辑器预览。</p>
+
+<h3>没有声音</h3>
+<p>浏览器要求先有一次点击才允许播放音频，点一下棋盘即可；部分浏览器默认静音标签页。</p>
+
+<h3>存档在哪</h3>
+<p>存在浏览器本地（<code>localStorage</code>），换浏览器或清缓存会丢。重要对局请用「保存复盘」导出文件。</p>
+
+<h3>能联机吗</h3>
+<p>不能。这是单机版：三个座位由 AI 接手。控制区的“外援”是给另一个本地程序用的接口，普通玩家不用管。</p>
+
+<h3>有没有还没做完的卡</h3>
+<p>
+  有 7 张是“近似实现”：效果方向对，但少了一层路径/条件约束（比如位移卡只保证落到合法空格，不检查途中经过谁）。
+  卡面写的是**实际效果**，不是设计稿。
+</p>
+
+<footer>
+  四国争霸 2.1 · DLC 版 ｜ 135 张卡 · 123 主动 / 12 被动 ｜ 建议 1366×768 以上窗口，横屏体验更好
+</footer>
+
+</div>
+</body>
+</html>

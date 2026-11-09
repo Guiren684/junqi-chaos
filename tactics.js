@@ -496,6 +496,38 @@
     return 0;
   }
 
+  // ---- 预留格（RESV，2026-11-06，分级表条目 387/390/391/401/404）----
+  // 同一条原则的五个面：「边营留给对家、别占对家主线营、别把子放队友家挡视线」。
+  // 它是「配合」里唯一不依赖二阶信念的一类：判据是纯几何 + 公开位置。
+  // 只对**同一个大脑**（state.cmdSeats）内的队友生效——南北两个独立 AI 互占属于作弊。
+  const RESV_ON = ENV.JJ_RESV === "1";
+  const RESV_IN = NUM("JJ_RESV_IN", 70);       // 落进队友要用的格
+  const RESV_OUT = NUM("JJ_RESV_OUT", 30);     // 从那里撤出来
+  const RESV_STATS = { in: 0, out: 0, fire: 0 };
+
+  function reservedCells(state, seat) {
+    if (!RESV_ON) return null;
+    if (state.resvOff && state.resvOff[seat]) return null;
+    const mate = mateOf(seat);
+    if (!mate) return null;
+    if (state.cmdSeats && state.cmdSeats.indexOf(seat) < 0) return null;   // 不在同一大脑
+    if (state.out && state.out[mate]) return null;
+    const out = new Set();
+    for (const [id, n] of B.BOARD.byId) {
+      if (!n.seat || n.seat !== mate) continue;
+      if (n.kind === "camp" || n.row >= 4) out.add(id);    // 队友的营 + 后两排（雷区/旗区）
+    }
+    return out.size ? out : null;
+  }
+
+  function resvBonus(state, seat, move, resv) {
+    if (!RESV_ON || !resv) return 0;
+    let v = 0;
+    if (resv.has(move.to)) v -= RESV_IN;
+    if (resv.has(move.from)) v += RESV_OUT;
+    return v;
+  }
+
   /** 挡下家：吃掉能吃到搭档那一手的子，或堵住它的铁路 */
   function guardBonus(state, seat, move, plan) {
     const act = mateActor(state, plan);
@@ -593,6 +625,7 @@
     ON, STATS, prepare, bonus, commit,
     guardCells, upOf, nextOf, mateOf, findTargets, laneOk, movesFor, mateActor,
     prepTarget, prepBonus, inZone, distTo, mateReady, approachCredit,
+    reservedCells, resvBonus, RESV_STATS, RESV_ON,
     _setPlan(state, team, plan) { bbOf(state, team).dual = plan; },
     _getPlan(state, team) { return bbOf(state, team).dual || null; },
   };
