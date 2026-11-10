@@ -2290,8 +2290,14 @@
   function quizAvailable() { return !!(QUIZ && QUIZ.size() >= QUIZ.PER_USE && quizOn && !devOn()); }
 
   function beginQuiz(cardId, name, base, onDone) {
-    // Ⅲ 级卡已经满级，答题没有任何收益，直接放行（别拿无意义的两题烦人）
-    if (!quizAvailable() || (base || 1) >= 3) { onDone(base); return; }
+    // Ⅲ 级卡已经满级，答题没有收益，直接放行 —— 但要给一行说明，
+    // 否则玩家会以为"点了卡没出题 = 答题定级坏了"
+    if ((base || 1) >= 3) {
+      dlcNote("「" + name + "」已经是 Ⅲ 级，直接按 Ⅲ 级生效");
+      onDone(base);
+      return;
+    }
+    if (!quizAvailable()) { onDone(base); return; }
     // 同一局里不重复问同一道题（问遍整库再重来）
     const used = (state.dlc && state.dlc.quizUsed) || [];
     const qs = QUIZ.draw(QUIZ.PER_USE, null, used);
