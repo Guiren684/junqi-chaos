@@ -2469,7 +2469,8 @@
         const a = armed;
         const done = armedPicks(a).length;
         const where = a.step === 1 ? "目标" : "落点";
-        dlcConfirmEl.innerHTML = '<div><b>' + a.name + '</b>：请在棋盘上点' + where
+        const lvTag = (a.tier || 1) > 1 ? "「" + ["Ⅰ", "Ⅱ", "Ⅲ"][Math.min(2, (a.tier || 1) - 1)] + " 级」" : "";
+        dlcConfirmEl.innerHTML = '<div><b>' + a.name + lvTag + '</b>：请在棋盘上点' + where
           + '（' + done + "/" + a.need + '，绿格为可选；再点已选的格子可取消）</div>'
           + '<div style="opacity:.6;margin-top:4px">点这张卡本身或按 Esc 放弃</div>';
         dlcConfirmEl.classList.remove("hidden");
@@ -2565,8 +2566,17 @@
   }
 
   // 这张卡这一手要选几个目标（count 为 0/缺省视作"全部"）
-  function needOf(card, tierLv) {
-    const sel = card.select || {};
+  // 与 dlc.js 的 specOf 对齐：Ⅲ 级可能换选择器（数量 1→3、范围 enemyHazard→enemyHazardAll），
+  // UI 若还按 Ⅰ 级的选择器算「要选几个」，答完题也只会让你点 1 个 —— 看起来就像定级没生效。
+  function specOfCard(card, tierLv, which) {
+    const by = which === 2 ? card.sel2ByTier : card.selectByTier;
+    const i = Math.min(2, Math.max(0, (tierLv || 1) - 1));
+    if (by && by[i]) return by[i];
+    return which === 2 ? card.sel2 : card.select;
+  }
+
+  function needOf(card, tierLv, which) {
+    const sel = specOfCard(card, tierLv, which) || {};
     const tier = (card.tiers && card.tiers[Math.min(2, (tierLv || 1) - 1)]) || {};
     let n = sel.count;
     if (typeof n === "string" && n.charAt(0) === "$") n = tier[n.slice(1)];
@@ -2599,18 +2609,36 @@
   }
 
   function proceedArm(cardId, c, tier, seat) {
-    const kind = (c.select && c.select.kind) || "none";
+    const kind = (specOfCard(c, tier, 1) || {}).kind || "none";
     if (NO_PICK_KINDS.indexOf(kind) >= 0) {          // 全场/无目标：点了就用
       executeCard(cardId, tier, null, null);
       return;
     }
+    let lv = tier;
     let cands = [];
-    try { cands = DLCX.bindingsFor(state, seat, cardId, 1, [], tier, true) || []; } catch (e) { cands = []; }
+    const bindAt = (k) => {
+      try { return DLCX.bindingsFor(state, seat, cardId, 1, [], k, true) || []; } catch (e) { return []; }
+    };
+    cands = bindAt(lv);
+    // Ⅲ 级的目标条件往往更严（例如"敌方军长以上"），可能一个都选不出来。
+    // 这时退到"能打出的最高等级"，别让玩家白答两题还什么都不能用。
+    if (!cands.length && lv > 1) {
+      for (let k = lv - 1; k >= 1; k -= 1) {
+        const cb = bindAt(k);
+        if (cb.length) {
+          cands = cb;
+          dlcNote("「" + c.name + "」" + ["Ⅰ", "Ⅱ", "Ⅲ"][lv - 1] + " 级现在没有符合条件的目标，改按 "
+            + ["Ⅰ", "Ⅱ", "Ⅲ"][k - 1] + " 级打出");
+          lv = k;
+          break;
+        }
+      }
+    }
     if (!cands.length) { dlcNote("「" + c.name + "」现在没有可选的目标"); render(); return; }
 
-    const want = needOf(c, tier);
+    const want = needOf(c, lv);
     const need = want > 0 ? Math.min(want, cands.length) : cands.length;
-    armed = { cardId, name: c.name, tier, seat, step: 1, picks: [], picks2: [], cands, cands2: null, need };
+    armed = { cardId, name: c.name, tier: lv, seat, step: 1, picks: [], picks2: [], cands, cands2: null, need };
     selected = null;
     legal = candPositions(cands);
     hoverPos = null;
@@ -2651,14 +2679,14 @@
   function advanceArm() {
     const a = armed;
     const c = DLCX.cardOf(a.cardId);
-    if (a.step === 1 && c && c.sel2) {
+    if (a.step === 1 && c && specOfCard(c, a.tier, 2)) {
       let c2 = [];
       try { c2 = DLCX.bindingsFor(state, a.seat, a.cardId, 2, a.picks, a.tier, true) || []; } catch (e) { c2 = []; }
       if (c2.length) {
         a.step = 2;
         a.cands2 = c2;
         a.picks2 = [];
-        const w2 = needOf(c, a.tier);
+        const w2 = needOf(c, a.tier, 2);
         a.need = w2 > 0 ? Math.min(w2, c2.length) : c2.length;
         legal = candPositions(c2);
         render();
@@ -3878,6 +3906,9 @@
     get agent() { return window.JunqiAgent || null; },
     // 战地问答的当前会话（调试/自动化测试用：能拿到题目与正确答案）
     get quiz() { return quizCtx; },
+    get armed() { return armed; },
+    // 测试用：某张卡在某一级"要选几个目标"（Ⅲ 级可能和 Ⅰ 级不同）
+    needOf(id, lv, which) { const c = DLCX.cardOf(id); return c ? needOf(c, lv, which) : -1; },
     quizAnswer(choice) { answerQuiz(choice); },
     quizNext() { quizNext(); },
     newGame, startGame,

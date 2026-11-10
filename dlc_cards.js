@@ -187,7 +187,8 @@
     T({ n: 35 }, { n: 40 }, { n: 50 }), "play",
     { kind: "none", count: 0 }, [{ op: "FREEZE", self: true, turns: 1 }, { op: "ADD_MERIT", n: "$n" }]);
   C("D23", "撒豆成兵", "典故", "生", "duration",
-    T({ duration: 2 }, { duration: 3 }, { duration: 5 }), "play",
+    // per 写进每一级（Ⅰ/Ⅱ 都是 1 枚），Ⅲ 级由 dlc_cards_up3.js 改成 2 枚 + 师长起 + 到本局结束
+    T({ duration: 2, per: 1 }, { duration: 3, per: 1 }, { duration: 5, per: 1 }), "play",
     { kind: "none", count: 0 }, [{ op: "BEAN_DROP", turns: "$duration" }]);
   C("D24", "宁有种乎", "典故", "变", "count",
     T({ count: 2 }, { count: 3 }, { count: 4 }), "play",

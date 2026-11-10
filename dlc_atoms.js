@@ -277,7 +277,7 @@
     project(state, ctx) { return 6 * (ctx.n || 1); },
   };
 
-  // 撒豆成兵：每回合在我方阵地空位空降 1 枚随机棋力的子（暗子）。
+  // 撒豆成兵：每回合在我方阵地空位空降 N 枚随机棋力的子（暗子）。
   // 「每回合」= 该座位每走完一手，由 dlc.js 的 afterMove 调 beanDropTick 触发一次。
   const BEAN_POOL = [
     "engineer", "engineer", "engineer",
@@ -287,14 +287,27 @@
     "regiment",
     "brigade",
   ];
+  // 加强版 Ⅲ 级要「至少师长」：追加师长、军长（不给司令——一个座位俩司令会让
+  // 「司令阵亡」类条件与 AI 估值都失去意义）。
+  const BEAN_HIGH = ["division", "division", "army"];
+
+  function beanPoolOf(minRank) {
+    if (!minRank) return BEAN_POOL;
+    const all = BEAN_POOL.concat(BEAN_HIGH);
+    const f = all.filter((t) => rankOf(t) >= minRank);
+    return f.length ? f : all;
+  }
 
   ATOMS.BEAN_DROP = {
     apply(state, ctx) {
-      const turns = ctx.turns != null ? ctx.turns : ((ctx.params && ctx.params.duration) || 2);
-      const per = (ctx.params && ctx.params.per) || 1;
-      S.add(state, { key: "beanDrop", team: ctx.seat, until: null, value: { left: turns, per } });
-      log(state, "beanStart", { seat: ctx.seat, left: turns });
-      return [{ op: "BEAN_DROP", left: turns }];
+      const p = ctx.params || {};
+      const inf = !!p.inf;                       // 持续到本局结束
+      const turns = inf ? 0 : (ctx.turns != null ? ctx.turns : (p.duration || 2));
+      const per = p.per || 1;
+      const minRank = p.minRank || 0;
+      S.add(state, { key: "beanDrop", team: ctx.seat, until: null, value: { left: turns, per, minRank, inf } });
+      log(state, "beanStart", { seat: ctx.seat, left: turns, per, minRank, inf });
+      return [{ op: "BEAN_DROP", left: turns, per, minRank, inf }];
     },
     project() { return 13; },
   };
@@ -306,8 +319,9 @@
     const clearMine = () => {
       state.dlc.statuses = (state.dlc.statuses || []).filter((s) => !(s.key === "beanDrop" && s.team === seat));
     };
+    const inf = !!(st.value && st.value.inf);
     const left = (st.value && st.value.left) || 0;
-    if (left <= 0) { clearMine(); return null; }
+    if (!inf && left <= 0) { clearMine(); return null; }
     // 我方阵地 = 自己那 30 格（大本营除外，行营可以落）
     const cells = B.BOARD.nodes
       .filter((nd) => nd.seat === seat && nd.kind !== "hq")
@@ -315,22 +329,26 @@
       .filter((id) => !state.pieces.some((p) => p.position === id));
     if (!cells.length) return null;   // 阵地满了就攒着，下回合再落
     const per = Math.max(1, Math.min(3, (st.value && st.value.per) || 1));
+    const pool = beanPoolOf((st.value && st.value.minRank) || 0);
     let last = null;
     let dropped = 0;
     for (let k = 0; k < per; k += 1) {
       const free = cells.filter((id) => !state.pieces.some((p2) => p2.position === id));
       if (!free.length) break;
-      const type = BEAN_POOL[Math.floor(Math.random() * BEAN_POOL.length)];
+      const type = pool[Math.floor(Math.random() * pool.length)];
       const cell = free[Math.floor(Math.random() * free.length)];
       last = spawn(state, type, cell, seat, { hidden: true });
       dropped += 1;
       log(state, "bean", { piece: last.id, type, cell, seat, left });
     }
     if (!dropped) return null;
-    st.value.left = left - 1;
-    log(state, "bean2", { seat, dropped, left: st.value.left });
-    if (st.value.left <= 0) clearMine();
-    return { piece: last, cell: last.position, type: last.type, left: st.value.left };
+    if (!inf) {
+      st.value.left = left - 1;
+      if (st.value.left <= 0) clearMine();
+    }
+    log(state, "bean2", { seat, dropped, left: inf ? -1 : st.value.left });
+    return { piece: last, cell: last.position, type: last.type, left: inf ? -1 : st.value.left,
+      per, dropped, minRank: (st.value && st.value.minRank) || 0, inf };
   }
 
   // 宁有种乎：随机几枚己方子改军衔——一半升 1 级，一半在原级附近浮动

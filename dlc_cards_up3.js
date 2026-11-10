@@ -129,7 +129,8 @@
   UP.D20 = { t3: { delta: 4 } };
   UP.D21 = { t3: { duration: 4 }, sel: { kind: "enemyPiece", count: 3 } };
   UP.D22 = { t3: { n: 100 }, atoms: [{ op: "FREEZE", self: true, turns: 1 }, { op: "ADD_MERIT", n: 100 }, { op: "DRAW_CARD", n: 2 }] };
-  UP.D23 = { t3: { duration: 8, per: 2 }, atoms: [{ op: "BEAN_DROP", turns: "$duration", per: 2 }] };
+  // Ⅲ 级：每回合空降 2 枚，且至少是师长；不设回合上限，一直掉到本局结束
+  UP.D23 = { t3: { duration: 0, per: 2, minRank: 7, inf: true } };
   UP.D24 = { t3: { count: 99 }, atoms: [{ op: "RANK_REROLL" }] };
 
   // ================= 卷五 棋理（23） =================

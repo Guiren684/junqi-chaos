@@ -1014,9 +1014,15 @@
         return (a.replace ? "就地变成" + nm : "生成" + nm);
       }
       case "BEAN_DROP": {
+        // 只按等级取值：per/minRank/inf 只写在 tiers[2]，写在原子上会污染 Ⅰ/Ⅱ 级卡面
+        const inf = !!tier.inf;
         const d = pv(a.turns, tier.duration != null ? tier.duration : 2);
-        const per = a.per || 1;
-        return "每个回合在我方阵地空位空降 " + per + " 枚随机棋力的子（" + (d === 1 ? "本回合" : d + " 个回合") + "）";
+        const per = tier.per || 1;
+        const minRank = tier.minRank || 0;
+        // 不给司令：一个座位俩司令会让「司令阵亡」类条件与 AI 估值失去意义
+        const who = minRank >= 7 ? "军衔至少师长的子（不出司令）" : "随机棋力的子";
+        const span = inf ? "，持续到本局结束" : ("（" + (d === 1 ? "本回合" : d + " 个回合") + "）");
+        return "己方每走完一手，就在我方阵地空位空降 " + per + " 枚" + who + span;
       }
       case "RANK_REROLL": {
         const n = tier.count != null ? tier.count : 2;
@@ -1509,8 +1515,10 @@
     if (!r) return null;
     const seatName = (B.SEAT_NAMES && B.SEAT_NAMES[seat]) || seat;
     const nm = (INFO[r.type] && INFO[r.type].name) || r.type;
+    const cnt = r.dropped > 1 ? (r.dropped === 2 ? "两枚" : "三枚") : "一枚";
+    const tail = r.inf ? "，持续到本局结束" : "（还剩 " + r.left + " 回合）";
     if (!Array.isArray(state.log)) state.log = [];
-    state.log.push("【战术】" + seatName + " 撒豆成兵：天降一名" + nm + "（还剩 " + r.left + " 枚）");
+    state.log.push("【战术】" + seatName + " 撒豆成兵：天降" + cnt + "子（最新一名" + nm + "）" + tail);
     if (state.log.length > 200) state.log = state.log.slice(-200);
     return r;
   }
