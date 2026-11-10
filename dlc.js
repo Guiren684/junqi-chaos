@@ -810,6 +810,7 @@
     DEFEAT_RETREAT: "战败退回", GUARD_HQ: "大本营内判平兑", AS_MINE: "临时视为地雷",
     NIGHT: "全场明牌失效", FORCE_MOVE: "强制移动", BLAST: "范围爆破",
     TEAM_MARK: "全军获得效果",
+    BEAN_DROP: "每回合空降一子", RANK_REROLL: "随机改军衔",
   };
 
 
@@ -942,6 +943,14 @@
         const nm = (INFO[a.type] && INFO[a.type].name) || a.type;
         const n = card && card.tiers ? null : null;
         return (a.replace ? "就地变成" + nm : "生成" + nm);
+      }
+      case "BEAN_DROP": {
+        const d = pv(a.turns, tier.duration != null ? tier.duration : 2);
+        return "每个回合在我方阵地空位空降 1 枚随机棋力的子（" + (d === 1 ? "本回合" : d + " 个回合") + "）";
+      }
+      case "RANK_REROLL": {
+        const n = tier.count != null ? tier.count : 2;
+        return "随机 " + n + " 枚己方子（军长、司令除外，越小越容易被选中）改军衔：一半升 1 级，一半在原级上下浮动 2 级；永久明牌";
       }
       case "REVIVE": {
         const r = pv(a.repeat, 1);
@@ -1219,6 +1228,9 @@
     }
     A.bind(state);
     state.dlc.milestones = { 50: false, 100: false };
+    // 走子钩子必须在 init 时就挂上：军功 / 里程碑发牌 / AI 出牌 / 撒豆成兵都靠 afterMove，
+    // 以前只有 ui.js 会调 wrap()，脚本或复盘入口调用 applyMove 时这些就全静默失效了。
+    try { wrap(); } catch (e) { /* 没有引擎时忽略 */ }
     deal(state, "opening");
     for (const s2 of SEATS) {
       if (s2 !== HUMAN && state.dlc.offers && state.dlc.offers[s2]) aiTakeOffer(state, s2);
@@ -1238,6 +1250,8 @@
     try { decayTick(state, seat); } catch (e) { /* 不影响主流程 */ }
     if (!ensure(state)) return;
     tick(state);
+    // 撒豆成兵：这个座位每走完一手，就从天上掉一枚
+    try { beanDrop(state, seat); } catch (e) { /* 掉落失败不影响对局 */ }
     const m = state.moveCount;
     for (const need of [50, 100]) {
       if (m >= need && !state.dlc.milestones[need]) {
@@ -1413,6 +1427,19 @@
     return text;
   }
 
+  // 撒豆成兵：每回合天降一枚，顺手在左边日志留一行（否则玩家只会看到棋盘上凭空多子）
+  function beanDrop(state, seat) {
+    if (!A.beanDropTick) return null;
+    const r = A.beanDropTick(state, seat);
+    if (!r) return null;
+    const seatName = (B.SEAT_NAMES && B.SEAT_NAMES[seat]) || seat;
+    const nm = (INFO[r.type] && INFO[r.type].name) || r.type;
+    if (!Array.isArray(state.log)) state.log = [];
+    state.log.push("【战术】" + seatName + " 撒豆成兵：天降一名" + nm + "（还剩 " + r.left + " 枚）");
+    if (state.log.length > 200) state.log = state.log.slice(-200);
+    return r;
+  }
+
   function describeBind(state, bind) {
     const out = [];
     if (bind.target) {
@@ -1571,7 +1598,7 @@
 
   // ---------------- 卡牌复杂度 ----------------
   // 判据只算"用起来要几步、要想几件事"，不评价强弱。
-  // 全部从卡数据推出来，不手写标签（135 张手写一次，改一次就全烂）。
+  // 全部从卡数据推出来，不手写标签（137 张手写一次，改一次就全烂）。
   // 分层：简单 = 点一下就懂；普通 = 要选目标/有代价；复杂 = 两步选目标或改规则。
   const COND_OPS = {
     COND_RANK: 1, FOE_RANK: 1, DUEL_EVEN: 1, NIGHT: 1, NEGATE_SKILL: 1,

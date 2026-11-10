@@ -1,5 +1,5 @@
 /*
- * dlc_cards.js — DLC 卡牌数据（135 张，纯数据无逻辑）
+ * dlc_cards.js — DLC 卡牌数据（137 张，纯数据无逻辑）
  * 字段：id / name / book / tag / axis / tiers / when / select / sel2 / atoms / cost
  *   axis  : targets | duration | count | range | value | cost
  *   tiers : Ⅰ / Ⅱ / Ⅲ，只改参数
@@ -186,6 +186,12 @@
   C("D22", "临阵磨枪", "典故", "诅咒", "value",
     T({ n: 35 }, { n: 40 }, { n: 50 }), "play",
     { kind: "none", count: 0 }, [{ op: "FREEZE", self: true, turns: 1 }, { op: "ADD_MERIT", n: "$n" }]);
+  C("D23", "撒豆成兵", "典故", "生", "duration",
+    T({ duration: 2 }, { duration: 3 }, { duration: 5 }), "play",
+    { kind: "none", count: 0 }, [{ op: "BEAN_DROP", turns: "$duration" }]);
+  C("D24", "宁有种乎", "典故", "变", "count",
+    T({ count: 2 }, { count: 3 }, { count: 4 }), "play",
+    { kind: "none", count: 0 }, [{ op: "RANK_REROLL" }]);
 
   // ---------------- 卷五 棋理（23） ----------------
   C("Q1", "双飞", "棋理", "移", "count", T({ count: 1 }, { count: 2 }, { count: 3 }), "play",

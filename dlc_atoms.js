@@ -72,11 +72,15 @@
     log(state, "death", { piece: piece.id, type, owner: piece.owner, by: bySeat || null, v: sv });
   }
 
-  function spawn(state, type, cell, seat) {
+  function spawn(state, type, cell, seat, opts) {
     const id = "d" + (state.dlc.seq = (state.dlc.seq || 0) + 1);
+    // 默认按「明牌空降」处理（冲锋号 / 空投那类，大家看得见它是什么）。
+    // opts.hidden 用于撒豆成兵：落下来的是暗子，对手只看得见"多了一枚子"。
+    const hidden = !!(opts && opts.hidden);
     const piece = {
       id, owner: seat, type, position: cell,
-      revealed: true, revealedTo: "all", latent: false, moved: false, hasFought: false,
+      revealed: !hidden, revealedTo: hidden ? null : "all",
+      latent: false, moved: false, hasFought: false,
       spawned: true, dlc: true,
     };
     if (type === "decoy") piece.decoy = true;
@@ -271,6 +275,95 @@
       return out;
     },
     project(state, ctx) { return 6 * (ctx.n || 1); },
+  };
+
+  // 撒豆成兵：每回合在我方阵地空位空降 1 枚随机棋力的子（暗子）。
+  // 「每回合」= 该座位每走完一手，由 dlc.js 的 afterMove 调 beanDropTick 触发一次。
+  const BEAN_POOL = [
+    "engineer", "engineer", "engineer",
+    "platoon", "platoon",
+    "company", "company",
+    "battalion", "battalion",
+    "regiment",
+    "brigade",
+  ];
+
+  ATOMS.BEAN_DROP = {
+    apply(state, ctx) {
+      const turns = ctx.turns != null ? ctx.turns : ((ctx.params && ctx.params.duration) || 2);
+      S.add(state, { key: "beanDrop", team: ctx.seat, until: null, value: { left: turns } });
+      log(state, "beanStart", { seat: ctx.seat, left: turns });
+      return [{ op: "BEAN_DROP", left: turns }];
+    },
+    project() { return 13; },
+  };
+
+  // 掉一次。返回 null 表示这次没落（没有状态 / 已用完 / 阵地没空格）。
+  function beanDropTick(state, seat) {
+    const st = S.get(state, "beanDrop", undefined, seat);
+    if (!st) return null;
+    const clearMine = () => {
+      state.dlc.statuses = (state.dlc.statuses || []).filter((s) => !(s.key === "beanDrop" && s.team === seat));
+    };
+    const left = (st.value && st.value.left) || 0;
+    if (left <= 0) { clearMine(); return null; }
+    // 我方阵地 = 自己那 30 格（大本营除外，行营可以落）
+    const cells = B.BOARD.nodes
+      .filter((nd) => nd.seat === seat && nd.kind !== "hq")
+      .map((nd) => nd.id)
+      .filter((id) => !state.pieces.some((p) => p.position === id));
+    if (!cells.length) return null;   // 阵地满了就攒着，下回合再落
+    const type = BEAN_POOL[Math.floor(Math.random() * BEAN_POOL.length)];
+    const cell = cells[Math.floor(Math.random() * cells.length)];
+    const p = spawn(state, type, cell, seat, { hidden: true });
+    st.value.left = left - 1;
+    log(state, "bean", { piece: p.id, type, cell, seat, left: st.value.left });
+    if (st.value.left <= 0) clearMine();
+    return { piece: p, cell, type, left: st.value.left };
+  }
+
+  // 宁有种乎：随机几枚己方子改军衔——一半升 1 级，一半在原级附近浮动
+  // 规矩：司令不参与（不然一手把司令洗成工兵，谁都不想再抽这张牌）；
+  //       选子偏向小官（weight = 9 - 军衔），这才叫"王侯将相宁有种乎"。
+  ATOMS.RANK_REROLL = {
+    apply(state, ctx) {
+      const n = (ctx.params && ctx.params.count) || ctx.n || 2;
+      const pool = state.pieces.filter((p) => p && p.owner === ctx.seat && p.position
+        && p.type !== "flag" && p.type !== "bomb" && p.type !== "mine" && p.type !== "decoy"
+        && rankOf(p.type) >= 1 && rankOf(p.type) <= 7);
+      if (!pool.length) return [];
+      const picked = [];
+      const left = pool.slice();
+      for (let k = 0; k < n && left.length; k += 1) {
+        const w = left.map((p) => Math.max(1, 9 - rankOf(p.type)));
+        let total = 0;
+        for (const x of w) total += x;
+        let r = Math.random() * total;
+        let idx = 0;
+        for (; idx < left.length; idx += 1) { r -= w[idx]; if (r <= 0) break; }
+        idx = Math.min(idx, left.length - 1);
+        picked.push(left[idx]);
+        left.splice(idx, 1);
+      }
+      const out = [];
+      for (const p of picked) {
+        const from = rankOf(p.type);
+        // 一半往上走、一半被洗牌
+        const up = Math.random() < 0.5;
+        let rank = up
+          ? Math.min(8, from + 1)                                  // 封顶军长：司令全局只该有一个
+          : Math.max(1, Math.min(8, from + Math.floor(Math.random() * 5) - 2)); // 原级 ±2
+        if (rank === from) rank = from >= 8 ? from - 1 : from + 1;  // 选中了就一定变
+        p.type = RANK2TYPE[rank];
+        p.revealed = true;
+        p.revealedTo = "all";
+        p.hardRevealed = true;
+        log(state, "reroll", { piece: p.id, from, to: rank, up });
+        out.push({ piece: p.id, from, to: rank, type: p.type });
+      }
+      return [{ op: "RANK_REROLL", items: out }];
+    },
+    project(state, ctx) { return 5 * ((ctx.params && ctx.params.count) || 2); },
   };
 
   ATOMS.REVIVE = {
@@ -850,7 +943,7 @@
 
   function bind(state) { stateRef = state; }
 
-  const API = { ATOMS, effRank, battleOverride, bind, rankOf, RANK2TYPE, kill, spawn, log, teamSeats };
+  const API = { ATOMS, effRank, battleOverride, bind, rankOf, RANK2TYPE, kill, spawn, log, teamSeats, beanDropTick };
   global.JunqiDLCAttoms = API;
   if (typeof module !== "undefined" && module.exports) module.exports = API;
 })(typeof window !== "undefined" ? window : globalThis);
