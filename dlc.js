@@ -76,7 +76,15 @@
 
     switch (spec.kind) {
       case "allOwn": {
-        const pool = ownAlive(state, seat).filter((p) => p.type !== "flag");
+        let pool = ownAlive(state, seat).filter((p) => p.type !== "flag");
+        // filter：加强版卡要"全体符合条件的子"（例如晋级 Ⅲ：除司令/炸弹/地雷/工兵外全部生效）
+        pool = pool.filter((p) => {
+          if (f.exclude && f.exclude.indexOf(p.type) >= 0) return false;
+          const r = rankOf(p.type);
+          if (f.rankMin != null && r < f.rankMin) return false;
+          if (f.rankMax != null && r > f.rankMax) return false;
+          return true;
+        });
         return pool.slice(0, n === 0 ? pool.length : n).map((p) => ({ target: p }));
       }
       case "allEnemy": {
@@ -123,6 +131,26 @@
           && !p2.hasFought && p2.type !== "flag" && rail(p2.position));
         const shootable = pool.filter((t) => mine.some((m) => clearLine(m, t)));
         return shootable.slice(0, n).map((p2) => ({ target: p2 }));
+      }
+      case "anyEmpty": {
+        // 场上任意空位（含敌方半场、中央九宫）
+        const used0 = new Set(state.pieces.filter((p2) => p2.position).map((p2) => p2.position));
+        const cells0 = B.BOARD.nodes.filter((x2) => x2.kind !== "hq" && !used0.has(x2.id)).map((x2) => x2.id);
+        return cells0.slice(0, n === 0 ? cells0.length : n).map((c) => ({ cells: [c], n: 1 }));
+      }
+      case "enemyEmpty": {
+        // 敌方阵地里的空位（冲锋号 Ⅲ / 空投 Ⅲ：直接把子送到对面家门口）
+        const used1 = new Set(state.pieces.filter((p2) => p2.position).map((p2) => p2.position));
+        const cells1 = B.BOARD.nodes
+          .filter((x2) => x2.seat && B.teamOf(x2.seat) !== B.teamOf(seat) && x2.kind !== "hq" && !used1.has(x2.id))
+          .map((x2) => x2.id);
+        return cells1.slice(0, n === 0 ? cells1.length : n).map((c) => ({ cells: [c], n: 1 }));
+      }
+      case "enemyHazardAll": {
+        // 敌方全部炸弹与地雷（不看有没有探明）——釜底抽薪 / 排弹 Ⅲ
+        const pool2 = state.pieces.filter((p2) => p2.position && inFoe(p2)
+          && (p2.type === "bomb" || p2.type === "mine"));
+        return pool2.slice(0, n === 0 ? pool2.length : n).map((p2) => ({ target: p2 }));
       }
       case "enemyCampEmpty": {
         // 潜伏：敌方半场里空着的行营
@@ -260,6 +288,14 @@
           .sort((a, b) => rankOf(a.type) - rankOf(b.type));
         return pool.slice(0, n).map((p) => ({ target: p }));
       }
+      case "ownBackRank": {
+        // 己方后两排的任意子（不限军衔）——乌龟阵 Ⅲ / 十面埋伏 Ⅲ 要能选到旅长
+        const pool = state.pieces
+          .filter((p) => p.owner === seat && p.position && p.type !== "flag" && p.type !== "mine")
+          .filter((p) => { const n2 = B.BOARD.byId.get(p.position); return n2 && n2.row >= 4; })
+          .sort((a, b) => rankOf(a.type) - rankOf(b.type));
+        return pool.slice(0, n).map((p) => ({ target: p }));
+      }
       case "ownFrontCells": {
         // 己方靠中央的两排（row 0/1）——地雷原本永远去不了的地方
         const used = new Set(state.pieces.filter((p2) => p2.position).map((p2) => p2.position));
@@ -359,13 +395,22 @@
 
   // 某个选择器现在能选什么（which=1 主选择器，2 副选择器）。
   // UI 的"点卡 → 点目标"就靠它把可选格/可选子摊出来，和 play() 用的是同一套 pick。
+  // 按等级取选择器：加强版的 Ⅲ 级可能换目标集（例如"敌方 1 枚"→"敌方 3 枚"），
+  // 但不能把 Ⅰ/Ⅱ 级也一起改掉，所以用 selectByTier[2] 单独存。
+  function specOf(card, lv, which) {
+    const byTier = which === 2 ? card.sel2ByTier : card.selectByTier;
+    if (byTier && byTier[(lv || 1) - 1]) return byTier[(lv || 1) - 1];
+    return which === 2 ? card.sel2 : card.select;
+  }
+
   function bindingsFor(state, seat, cardId, which, picks, tierLv, wide) {
     const card = C.BY_ID[cardId];
     if (!card || !state.dlc || !state.dlc.on) return [];
     const hand = state.dlc.hands[seat] || [];
     const entry = hand.find((h) => h.id === cardId);
-    const tier = card.tiers[Math.min(2, ((entry && entry.tier) || tierLv || 1) - 1)] || {};
-    const src = which === 2 ? card.sel2 : card.select;
+    const lv = (entry && entry.tier) || tierLv || 1;
+    const tier = card.tiers[Math.min(2, lv - 1)] || {};
+    const src = specOf(card, lv, which);
     if (!src || (which === 1 && src.kind === "none")) return [];
     const spec = JSON.parse(JSON.stringify(src));
     if (typeof spec.count === "string") spec.count = tier[spec.count.slice(1)];
@@ -401,7 +446,7 @@
     return { ok: true, card, effects, passive: true };
   }
 
-  function play(state, seat, cardId, tierLv, forced, direct, forced2) {
+  function play(state, seat, cardId, tierLv, forced, direct, forced2, levelOverride) {
     if (!state.dlc || !state.dlc.on) return { ok: false, msg: "DLC 未开启" };
     const card = C.BY_ID[cardId];
     if (!card) return { ok: false, msg: "没有这张卡" };
@@ -411,7 +456,9 @@
     if (card.when === "setup") return { ok: false, msg: "配比卡在布阵阶段生效，对局中打不出" };
     if (card.when === "passive") return { ok: false, msg: "被动卡持有即生效，不用打" };
     const entry = idx >= 0 ? hand[idx] : { id: cardId, tier: tierLv || 1 };
-    const tier = card.tiers[Math.min(2, (entry.tier || tierLv || 1) - 1)];
+    // 答题定级：levelOverride 是"这次按几级结算"，优先于手牌等级（手牌等级当起点用）
+    const lv = Math.max(1, Math.min(3, levelOverride || entry.tier || tierLv || 1));
+    const tier = card.tiers[Math.min(2, lv - 1)];
     const used = Object.assign({}, tier === undefined ? {} : {});
     // 展开 $params
     const t = {};
@@ -421,13 +468,25 @@
 
     // 代价
     if (card.cost) {
-      const costCtx = { seat, params: card.cost, n: card.cost.count || 1 };
-      const op = A.ATOMS[card.cost.op];
-      if (op) op.apply(state, costCtx);
+      if (card.costPick) {
+        // 加强版 Ⅲ 级：代价从"随机牺牲"改成"挑最轻的那枚"（玩家能算得清）
+        const pool = ownAlive(state, seat)
+          .filter((p) => p.type !== "flag")
+          .sort((a, b) => A.rankOf(a.type) - A.rankOf(b.type));
+        const victim = pool[0];
+        if (victim) {
+          A.kill(state, victim, null);
+          A.log(state, "costpick", { seat, piece: victim.id });
+        }
+      } else {
+        const costCtx = { seat, params: card.cost, n: card.cost.count || 1 };
+        const op = A.ATOMS[card.cost.op];
+        if (op) op.apply(state, costCtx);
+      }
     }
 
     // 选择目标
-    const spec = JSON.parse(JSON.stringify(card.select || { kind: "none" }));
+    const spec = JSON.parse(JSON.stringify(specOf(card, lv, 1) || { kind: "none" }));
     if (typeof spec.count === "string") spec.count = t[spec.count.slice(1)];
     if (typeof spec.range === "string") spec.range = t[spec.range.slice(1)];
     let bindings = pick(state, seat, spec);
@@ -436,8 +495,9 @@
 
     // 第二选择器：给 RELOCATE / SWAP_POS 提供落点或对手
     let sel2Binds = [];
-    if (card.sel2) {
-      const s2 = JSON.parse(JSON.stringify(card.sel2));
+    const s2src = specOf(card, lv, 2);
+    if (s2src) {
+      const s2 = JSON.parse(JSON.stringify(s2src));
       if (typeof s2.count === "string") s2.count = t[s2.count.slice(1)];
       if (s2.range === undefined && card.range != null) s2.range = card.range;
       s2.refPiece = bindings[0] && bindings[0].target;
@@ -461,7 +521,8 @@
         params: t,
         card,
       };
-      const b2 = sel2Binds[Math.min(effects.length === -1 ? 0 : 0, sel2Binds.length - 1)] || sel2Binds[0];
+      // 多目标位移：第 i 个目标配第 i 个落点（以前恒取第 0 个，导致 N 枚子叠在同一格）
+      const b2 = sel2Binds[Math.min(bindings.indexOf(bind), sel2Binds.length - 1)] || sel2Binds[0];
       if (b2) {
         if (b2.cells) ctx.cells = b2.cells;
         if (b2.target && !ctx.b) ctx.b = b2.target;
@@ -525,9 +586,9 @@
     // 用完即弃（开发者模式不扣手牌）
     if (idx >= 0) hand.splice(idx, 1);
     state.dlc.played = state.dlc.played || [];
-    state.dlc.played.push({ seat, id: cardId, tier: entry.tier || 1, turn: state.moveCount, effects });
-    A.log(state, "play", { seat, id: cardId, tier: entry.tier || 1, n: effects.length });
-    noteCardUse(state, seat, card, entry.tier || tierLv || 1, {
+    state.dlc.played.push({ seat, id: cardId, tier: lv, turn: state.moveCount, effects });
+    A.log(state, "play", { seat, id: cardId, tier: lv, n: effects.length });
+    noteCardUse(state, seat, card, lv, {
       targets: describePlayTargets(state, seat, bindings),
       dev: !!direct,
     });
@@ -538,7 +599,9 @@
   }
 
   // ---------------- 抽取 ----------------
-  function rollTier(state) {
+  function rollTier(state, seat) {
+    // AI 一律拿 Ⅲ 级：人类靠战地问答把卡打上去，AI 不会答题，但也不能因此比人弱一档
+    if (seat && !isHuman(state, seat)) return 3;
     const m = state.moveCount;
     const r = Math.random();
     if (m < 10) return 1;
@@ -564,7 +627,7 @@
     for (const s of alive) {
       const three = [];
       for (let k = 0; k < 3 && cursor < pool.length; k += 1) {
-        three.push({ id: pool[cursor], tier: rollTier(state) });
+        three.push({ id: pool[cursor], tier: rollTier(state, s) });
         cursor += 1;
       }
       offers[s] = three;
@@ -835,17 +898,21 @@
       case "allOwn": return "己方全体";
       case "allEnemy": return "敌方全体";
       case "ownPair": return "己方两枚";
-      case "ownLowest": return "己方最小的一枚";
+      case "ownLowest": return num("枚") + "己方最小的子";
       case "ownLowBack": return num("枚") + "己方后两排的小子";
+      case "ownBackRank": return num("枚") + "己方后两排的子";
       case "ownHqPiece": return num("枚") + "己方大本营里的守军";
       case "allyHqPiece": return "盟友大本营里的守军";
       case "enemySnipe": return num("枚") + "铁路上没打过仗的敌子";
       case "enemyCampEmpty": return "敌方空着的行营";
+      case "anyEmpty": return (n > 1 ? n + " 处" : "") + "场上任意空位";
+      case "enemyEmpty": return (n > 1 ? n + " 处" : "") + "敌方阵地空位";
+      case "enemyHazardAll": return (n > 1 ? n + " 枚" : "") + "敌方炸弹与地雷";
       case "enemyHazard": return num("枚") + "敌方已探明的炸弹或地雷";
       case "enemyBomb": return num("枚") + "敌方炸弹";
       case "enemyOnRail": return num("枚") + "铁路上的敌子";
       case "enemyInCamp": return num("枚") + "行营里的敌子";
-      case "enemyHighestRank": return "敌方已明牌的最大子";
+      case "enemyHighestRank": return num("枚") + "敌方最大的子";
       case "enemyLowestRank": return "敌方最小的一枚";
       case "ownMine": return num("枚") + "己方地雷";
       case "ownEngineer": return num("枚") + "己方工兵";
@@ -929,6 +996,8 @@
         return "切断这段铁路 " + (turn || 2) + " 个回合，双方都过不去";
       case "UNBLOCK":
         return "解除所有断路";
+      case "CLEAR_FROZEN":
+        return "己方被冻结的子立即解冻";
       case "ADD_MERIT":
         return "军功 +" + pv(a.n, 0);
       case "DRAW_CARD":
@@ -946,11 +1015,13 @@
       }
       case "BEAN_DROP": {
         const d = pv(a.turns, tier.duration != null ? tier.duration : 2);
-        return "每个回合在我方阵地空位空降 1 枚随机棋力的子（" + (d === 1 ? "本回合" : d + " 个回合") + "）";
+        const per = a.per || 1;
+        return "每个回合在我方阵地空位空降 " + per + " 枚随机棋力的子（" + (d === 1 ? "本回合" : d + " 个回合") + "）";
       }
       case "RANK_REROLL": {
         const n = tier.count != null ? tier.count : 2;
-        return "随机 " + n + " 枚己方子（军长、司令除外，越小越容易被选中）改军衔：一半升 1 级，一半在原级上下浮动 2 级；永久明牌";
+        const who = n >= 99 ? "全部己方子" : ("随机 " + n + " 枚己方子");
+        return who + "（军长、司令除外，越小越容易被选中）改军衔：一半升 1 级，一半在原级上下浮动 2 级；永久明牌";
       }
       case "REVIVE": {
         const r = pv(a.repeat, 1);
@@ -1009,12 +1080,14 @@
         return "转移位置到" + (to || "指定空格");
       }
       case "BLAST":
-        return "本格及相邻 4 格的敌子全部消灭";
+        return (a.ring === 8 ? "本格及周围 8 格（含斜角）的敌子全部消灭" : "本格及相邻 4 格的敌子全部消灭");
       case "TEAM_MARK":
+        if (a.key === "pierce") return "本回合每次攻击必胜" + durNote(turn);
         return "全军获得效果";
       case "SANBANFU": {
         const u = tier.uses != null ? tier.uses : 3;
-        return "接下来 " + u + " 场战斗必胜、不会阵亡；打完第 " + u + " 场后永久变成团长";
+        return "接下来 " + u + " 场战斗必胜、不会阵亡；打完第 " + u + " 场后"
+          + (tier.keep ? "不降级，反而永久 +1 级" : "永久变成团长");
       }
       case "DISCARD_CARD":
         return "随机弃掉你手里 1 张战术卡";
@@ -1081,7 +1154,7 @@
     }
 
     // 主动卡：目标 + 效果
-    const spec = Object.assign({}, card.select || {});
+    const spec = Object.assign({}, specOf(card, tierLv || 1, 1) || {});
     let n = spec.count;
     if (typeof n === "string" && n.startsWith("$")) n = tier[n.slice(1)];
     const target = selectPhrase(spec.kind, typeof n === "number" ? n : 1, spec);
@@ -1222,6 +1295,7 @@
     state.dlc.dead = state.dlc.dead || [];
     state.dlc.played = state.dlc.played || [];
     state.dlc.log = state.dlc.log || [];
+    state.dlc.quizUsed = state.dlc.quizUsed || [];   // 本局已经问过的题号（避免重复）
     for (const s of SEATS) {
       if (!state.dlc.hands[s]) state.dlc.hands[s] = [];
       if (!state.dlc.merit[s]) state.dlc.merit[s] = 0;
@@ -1359,8 +1433,9 @@
     if (!card) return [];
     const hand = (state.dlc.hands[seat] || []);
     const entry = hand.find((h) => h.id === cardId);
+    const lv0 = (entry && entry.tier) || 1;
     const tier = card.tiers[Math.min(2, ((entry && entry.tier) || 1) - 1)] || {};
-    const spec = JSON.parse(JSON.stringify(card.select || { kind: "none" }));
+    const spec = JSON.parse(JSON.stringify(specOf(card, lv0, 1) || { kind: "none" }));
     if (typeof spec.count === "string") spec.count = tier[spec.count.slice(1)];
     if (typeof spec.range === "string") spec.range = tier[spec.range.slice(1)];
     A.bind(state);
@@ -1479,7 +1554,8 @@
     if (!state.dlc || !state.dlc.on) return;
     const st = S.get(state, "meritPerTurn", undefined, seat);
     if (!st) return;
-    if ((state.moveCount || 0) < 60) return;
+    const from = (st.value && st.value.from) || 60;
+    if ((state.moveCount || 0) < from) return;
     const n = (st.value && st.value.n) || 2;
     state.dlc.merit = state.dlc.merit || {};
     state.dlc.merit[seat] = (state.dlc.merit[seat] || 0) + n;
@@ -1498,17 +1574,29 @@
         A.log(state, "sanbanfu", { piece: p.id, left: st.value.left });
         continue;
       }
-      // 三场打完：永久团长（用战力覆盖，不改 type，避免 25 子账对不上）
+      // 打完：默认永久变团长（用战力覆盖，不改 type，避免 25 子账对不上）；
+      // keepRank = 加强版 Ⅲ 级，不清零、反而永久 +1 级
+      const keep = !!(st.value && st.value.keep);
       S.clear(state, "sanbanfu", p.id);
       S.clear(state, "rankOverride", p.id);
-      S.add(state, { key: "rankOverride", target: p.id, until: null, value: { rank: 5 } });
+      if (keep) {
+        const nb = S.get(state, "rankBonus", p.id);
+        const base = (nb && nb.value && nb.value.n) || 0;
+        S.clear(state, "rankBonus", p.id);
+        S.add(state, { key: "rankBonus", target: p.id, until: null, value: { n: base + 1 } });
+        A.log(state, "sanbanfuDone", { piece: p.id, keep: true });
+      } else {
+        S.add(state, { key: "rankOverride", target: p.id, until: null, value: { rank: 5 } });
+        A.log(state, "sanbanfuDone", { piece: p.id, rank: 5 });
+      }
       p.revealed = true;
       p.revealedTo = "all";
-      A.log(state, "sanbanfuDone", { piece: p.id, rank: 5 });
       if (Array.isArray(state.log)) {
         const nm = (INFO[p.type] && INFO[p.type].name) || p.type;
         const seatName = (B.SEAT_NAMES && B.SEAT_NAMES[p.owner]) || p.owner;
-        state.log.push("【战术】" + seatName + " 的三板斧用完了，" + nm + " 变成团长（" + (B.cellLabel ? B.cellLabel(p.position) : p.position) + "）。");
+        const tail = keep ? "打完没降级，反而永久 +1 级" : "变成团长";
+        state.log.push("【战术】" + seatName + " 的三板斧用完了，" + nm + " " + tail
+          + "（" + (B.cellLabel ? B.cellLabel(p.position) : p.position) + "）。");
         state.log = state.log.slice(-200);
       }
     }
@@ -1526,6 +1614,15 @@
     if (bySeat && S.has(state, "revealOnKill", undefined, bySeat) && victim) {
       victim.revealed = true;
       victim.revealedTo = "all";
+    }
+    // 惩罚击杀者：击杀你的子的敌子永久 -N 级
+    if (killer && victim && victim.owner && S.has(state, "punishKiller", undefined, victim.owner)) {
+      const pk = S.get(state, "punishKiller", undefined, victim.owner);
+      const dn = (pk && pk.value && pk.value.n) || 2;
+      const nb = S.get(state, "rankBonus", killer.id);
+      const base = (nb && nb.value && nb.value.n) || 0;
+      S.clear(state, "rankBonus", killer.id);
+      S.add(state, { key: "rankBonus", target: killer.id, until: null, value: { n: base - dn } });
     }
     if (victim && victim.owner && S.has(state, "chargeOnLoss", undefined, victim.owner)) {
       state.dlc.bonusCharge = (state.dlc.bonusCharge || 0) + 1;

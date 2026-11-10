@@ -39,6 +39,21 @@
     border-top:1px dashed rgba(255,255,255,.14); padding-top:6px; }
   .dlc-card .e { font-size:10.8px; opacity:.62; margin-top:3px; line-height:1.35;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  /* 用卡前的战地问答 */
+  .dlc-modal .inner.quiz { width: 560px; max-width: 92vw; }
+  .qbar { display:flex; justify-content:space-between; font-size:12px; opacity:.75; margin:0 0 10px; }
+  .qtext { font-size:14px; line-height:1.65; margin-bottom:12px; }
+  .qopts { display:flex; flex-direction:column; gap:8px; }
+  .qopts button { text-align:left; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px;
+    background:rgba(255,255,255,.04); color:#eaeaea; border:1px solid rgba(255,255,255,.18); }
+  .qopts button:hover:not(:disabled) { border-color:#e0a458; background:rgba(224,164,88,.12); }
+  .qopts button:disabled { cursor:default; opacity:.9; }
+  .qopts button.right { border-color:#7cff6b; background:rgba(124,255,107,.16); }
+  .qopts button.wrong { border-color:#ff7b7b; background:rgba(255,123,123,.16); }
+  .qfb { margin-top:12px; padding:10px 12px; border-radius:8px; font-size:12.5px; line-height:1.65;
+    background:rgba(255,255,255,.05); border-left:3px solid #e0a458; }
+  .qfb .ok { color:#8fe3a8; } .qfb .no { color:#ff9b9b; }
+  .qfoot { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
   .hidden { display:none !important; }
 </style>
 <style>
@@ -177,6 +192,7 @@
       <button id="btnLoadReplay">读复盘</button>
       <button id="btnResult">战果</button>
       <label class="dlc-toggle" title="开启战术卡（实验）"><input type="checkbox" id="chkDlc" checked> DLC</label>
+      <label class="dlc-toggle" title="用卡前先答 2 道抗美援朝英雄事迹题，答对越多等级越高"><input type="checkbox" id="chkQuiz" checked> 答题定级</label>
       <label class="dlc-toggle" title="开发者模式：随时取任意卡生效（F2）"><input type="checkbox" id="chkDev"> DEV</label>
       <select id="setupSeatSel" class="setup-seat hidden" title="当前正在布阵的座位">
         <option value="south">布阵：南方（你）</option>
@@ -260,6 +276,23 @@
         <summary>每家 AI 种类 <span class="seat-ai-note">不改则跟随顶部「AI 随机」</span></summary>
         <div id="seatAiRows" class="seat-ai-rows"></div>
       </details>
+    </div>
+    <div id="dlcQuiz" class="dlc-modal hidden">
+      <div class="inner quiz">
+        <h3>战地问答</h3>
+        <div class="sub" id="quizSub">用这张卡之前先答 2 道题：答对 1 题升 1 级，答错不扣牌。</div>
+        <div class="qbar">
+          <span id="quizStep">第 1 / 2 题</span>
+          <span id="quizTier">当前 Ⅰ 级</span>
+        </div>
+        <div class="qtext" id="quizQ"></div>
+        <div class="qopts" id="quizOpts"></div>
+        <div class="qfb hidden" id="quizFb"></div>
+        <div class="qfoot">
+          <button id="quizNext" class="mini primary hidden">下一题</button>
+          <button id="quizGiveUp" class="mini">不用这张卡（Esc）</button>
+        </div>
+      </div>
     </div>
     <div id="dlcDraft" class="dlc-modal hidden">
       <div class="inner">
@@ -383,7 +416,10 @@
 <script src="dlc_status.js?v=20261108g"></script>
 <script src="dlc_atoms.js?v=20261108g"></script>
 <script src="dlc_cards.js?v=20261108g"></script>
-<script src="dlc.js?v=20261108g"></script>
+<script src="dlc_cards_up3.js?v=20261110b"></script>
+<script src="dlc.js?v=20261110a"></script>
+<script src="dlc_quiz_data.js?v=20261110a"></script>
+<script src="dlc_quiz.js?v=20261110a"></script>
 <div id="devPanel" class="dev-panel hidden">
   <div class="dev-hd">
     <b>开发者模式</b>

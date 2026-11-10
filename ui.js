@@ -2178,6 +2178,8 @@
 
   function newGame() {
     clearTimeout(aiTimer);
+    quizCtx = null;                        // 换局时把没答完的战地问答关掉
+    if (dlcQuizEl) dlcQuizEl.classList.add("hidden");
     sandboxMode = false;
     sandboxMatch = false;
     sandboxTakeover = false;
@@ -2267,6 +2269,125 @@
   const dlcDraftEl = document.getElementById("dlcDraft");
   const dlcPickRowEl = document.getElementById("dlcPickRow");
   let dlcShownOffer = "";
+
+  // ---------- 用卡前的战地问答（答对越多等级越高） ----------
+  const QUIZ = window.JunqiQuiz || null;
+  const dlcQuizEl = document.getElementById("dlcQuiz");
+  const quizSubEl = document.getElementById("quizSub");
+  const quizStepEl = document.getElementById("quizStep");
+  const quizTierEl = document.getElementById("quizTier");
+  const quizQEl = document.getElementById("quizQ");
+  const quizOptsEl = document.getElementById("quizOpts");
+  const quizFbEl = document.getElementById("quizFb");
+  const quizNextEl = document.getElementById("quizNext");
+  const quizGiveUpEl = document.getElementById("quizGiveUp");
+  const chkQuizEl = document.getElementById("chkQuiz");
+  let quizOn = !!(chkQuizEl && chkQuizEl.checked);
+  let quizCtx = null;   // { cardId, name, base, qs, idx, correct, answered, finished, onDone }
+  if (chkQuizEl) chkQuizEl.addEventListener("change", () => { quizOn = !!chkQuizEl.checked; });
+
+  // DEV 调试时不该被答题拦住 —— 那时是用来看卡效果的
+  function quizAvailable() { return !!(QUIZ && QUIZ.size() >= QUIZ.PER_USE && quizOn && !devOn()); }
+
+  function beginQuiz(cardId, name, base, onDone) {
+    // Ⅲ 级卡已经满级，答题没有任何收益，直接放行（别拿无意义的两题烦人）
+    if (!quizAvailable() || (base || 1) >= 3) { onDone(base); return; }
+    // 同一局里不重复问同一道题（问遍整库再重来）
+    const used = (state.dlc && state.dlc.quizUsed) || [];
+    const qs = QUIZ.draw(QUIZ.PER_USE, null, used);
+    if (state.dlc) state.dlc.quizUsed = used.concat(qs.map((q) => q.id)).slice(-400);
+    quizCtx = { cardId, name, base, qs, idx: 0, correct: 0, answered: false, finished: false, onDone };
+    if (dlcQuizEl) dlcQuizEl.classList.remove("hidden");
+    renderQuiz();
+  }
+
+  function closeQuiz() {
+    quizCtx = null;
+    if (dlcQuizEl) dlcQuizEl.classList.add("hidden");
+  }
+
+  function cancelQuiz(note) {
+    if (!quizCtx) return;
+    closeQuiz();
+    if (note) dlcNote(note);
+    render();
+  }
+
+  function renderQuiz() {
+    const ctx = quizCtx;
+    if (!ctx || !quizQEl) return;
+    const q = ctx.qs[ctx.idx];
+    const lv = QUIZ.level(ctx.base, ctx.correct);
+    quizSubEl.textContent = "「" + ctx.name + "」用前答 2 题：答对 1 题升 1 级，答错不扣牌。";
+    quizStepEl.textContent = "第 " + (ctx.idx + 1) + " / " + ctx.qs.length + " 题";
+    quizTierEl.textContent = "当前 " + QUIZ.ROMAN[lv - 1] + " 级 · 已答对 " + ctx.correct + " 题";
+    quizQEl.textContent = q.q;
+    quizOptsEl.innerHTML = "";
+    q.o.forEach((text, i) => {
+      const b = document.createElement("button");
+      b.innerHTML = "<b>" + "ABC"[i] + ".</b> " + text;
+      b.onclick = () => answerQuiz(i);
+      quizOptsEl.appendChild(b);
+    });
+    quizFbEl.classList.add("hidden");
+    quizFbEl.innerHTML = "";
+    quizNextEl.classList.add("hidden");
+    quizGiveUpEl.textContent = "不用这张卡（Esc）";
+    ctx.answered = false;
+    ctx.finished = false;
+  }
+
+  function answerQuiz(choice) {
+    const ctx = quizCtx;
+    if (!ctx || ctx.answered) return;
+    const q = ctx.qs[ctx.idx];
+    const ok = QUIZ.check(q, choice);
+    ctx.answered = true;
+    if (ok) ctx.correct += 1;
+    Array.prototype.forEach.call(quizOptsEl.children, (b, i) => {
+      b.disabled = true;
+      if (i === q.a) b.classList.add("right");
+      else if (i === choice) b.classList.add("wrong");
+    });
+    quizFbEl.innerHTML = (ok ? '<span class="ok">✓ 答对了</span>' : '<span class="no">✗ 答错了</span>')
+      + "　正确答案：<b>" + q.o[q.a] + "</b>"
+      + (q.kind ? "（" + q.kind + "）" : "")
+      + (q.sec ? "　依据：" + q.sec : "");
+    quizFbEl.classList.remove("hidden");
+    const lv = QUIZ.level(ctx.base, ctx.correct);
+    quizTierEl.textContent = "当前 " + QUIZ.ROMAN[lv - 1] + " 级 · 已答对 " + ctx.correct + " 题";
+    quizNextEl.textContent = ctx.idx >= ctx.qs.length - 1 ? "看结果" : "下一题";
+    quizNextEl.classList.remove("hidden");
+  }
+
+  function quizNext() {
+    const ctx = quizCtx;
+    if (!ctx) return;
+    if (ctx.finished) {
+      const lv = QUIZ.level(ctx.base, ctx.correct);
+      const done = ctx.onDone;
+      closeQuiz();
+      done(lv);
+      return;
+    }
+    if (ctx.idx < ctx.qs.length - 1) { ctx.idx += 1; renderQuiz(); return; }
+    // 收尾页：这次按几级结算
+    const lv = QUIZ.level(ctx.base, ctx.correct);
+    ctx.finished = true;
+    quizStepEl.textContent = "结果";
+    quizTierEl.textContent = "答对 " + ctx.correct + " / " + ctx.qs.length + " 题";
+    quizQEl.innerHTML = "<b>「" + ctx.name + "」按 <span class='ok'>" + QUIZ.ROMAN[lv - 1] + " 级</span> 生效</b>"
+      + "<br><span style=\"opacity:.7\">" + QUIZ.upgradeText(ctx.base, ctx.correct) + "；答错也照常打出，只是等级低一点。</span>";
+    quizOptsEl.innerHTML = "";
+    quizFbEl.classList.add("hidden");
+    quizNextEl.textContent = "用这张卡";
+    quizNextEl.classList.remove("hidden");
+    quizGiveUpEl.textContent = "算了（不用这张卡）";
+  }
+
+  if (quizNextEl) quizNextEl.addEventListener("click", quizNext);
+  if (quizGiveUpEl) quizGiveUpEl.addEventListener("click", () => cancelQuiz("「" + (quizCtx ? quizCtx.name : "这张卡") + "」这次不用了"));
+
 
   const chkDlcEl = document.getElementById("chkDlc");
   if (chkDlcEl) {
@@ -2454,9 +2575,10 @@
     return Number.isFinite(num) && num > 0 ? num : 0;
   }
 
-  // 点手牌里的卡：被动立即生效；主动进入"选目标"
+  // 点手牌里的卡：被动立即生效；主动先答题定级，再进入"选目标"
   function armCard(cardId) {
     if (armed && armed.cardId === cardId) { cancelArm(); return; }
+    if (quizCtx) return;                       // 答题没结束前不许再点牌
     const block = cardUseBlocker();
     if (block) { dlcNote(block); render(); return; }
     const seat = dlcSeat();
@@ -2472,6 +2594,11 @@
       return;
     }
 
+    // 主动卡：先答 2 题，按答对数决定这次按几级结算（DEV 或关掉「答题定级」时用手牌等级）
+    beginQuiz(cardId, c.name, tier, (lv) => proceedArm(cardId, c, lv, seat));
+  }
+
+  function proceedArm(cardId, c, tier, seat) {
     const kind = (c.select && c.select.kind) || "none";
     if (NO_PICK_KINDS.indexOf(kind) >= 0) {          // 全场/无目标：点了就用
       executeCard(cardId, tier, null, null);
@@ -2545,7 +2672,8 @@
   function executeCard(cardId, tier, forced1, forced2) {
     const seat = dlcSeat();
     let r = null;
-    try { r = DLCX.play(state, seat, cardId, tier, forced1, false, forced2); } catch (e) { r = { ok: false, msg: e.message }; }
+    // 第 8 个参数是"这次按几级结算"：答题定出来的等级要压过手牌上写的等级
+    try { r = DLCX.play(state, seat, cardId, tier, forced1, false, forced2, tier); } catch (e) { r = { ok: false, msg: e.message }; }
     finishCard(r);
   }
 
@@ -2765,6 +2893,7 @@
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "F2") { e.preventDefault(); devToggle(!window.__DEV_ON__); }
+    if (e.key === "Escape" && quizCtx) { e.preventDefault(); cancelQuiz("答题没做完，这张卡先不打了"); return; }
     if (e.key === "Escape" && armed) { e.preventDefault(); cancelArm(); }
   });
   if (devSearchEl) devSearchEl.addEventListener("input", devRenderList);
@@ -3747,6 +3876,10 @@
     get viewMode() { return viewMode; },
     setSeatRole,
     get agent() { return window.JunqiAgent || null; },
+    // 战地问答的当前会话（调试/自动化测试用：能拿到题目与正确答案）
+    get quiz() { return quizCtx; },
+    quizAnswer(choice) { answerQuiz(choice); },
+    quizNext() { quizNext(); },
     newGame, startGame,
     setDuelSeal(v) { duelSeal = !!v; },
     // 沙盘（自定义局面 → 四家对弈），供 tools/sandbox_smoke.js 调用

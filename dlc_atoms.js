@@ -291,7 +291,8 @@
   ATOMS.BEAN_DROP = {
     apply(state, ctx) {
       const turns = ctx.turns != null ? ctx.turns : ((ctx.params && ctx.params.duration) || 2);
-      S.add(state, { key: "beanDrop", team: ctx.seat, until: null, value: { left: turns } });
+      const per = (ctx.params && ctx.params.per) || 1;
+      S.add(state, { key: "beanDrop", team: ctx.seat, until: null, value: { left: turns, per } });
       log(state, "beanStart", { seat: ctx.seat, left: turns });
       return [{ op: "BEAN_DROP", left: turns }];
     },
@@ -313,13 +314,23 @@
       .map((nd) => nd.id)
       .filter((id) => !state.pieces.some((p) => p.position === id));
     if (!cells.length) return null;   // 阵地满了就攒着，下回合再落
-    const type = BEAN_POOL[Math.floor(Math.random() * BEAN_POOL.length)];
-    const cell = cells[Math.floor(Math.random() * cells.length)];
-    const p = spawn(state, type, cell, seat, { hidden: true });
+    const per = Math.max(1, Math.min(3, (st.value && st.value.per) || 1));
+    let last = null;
+    let dropped = 0;
+    for (let k = 0; k < per; k += 1) {
+      const free = cells.filter((id) => !state.pieces.some((p2) => p2.position === id));
+      if (!free.length) break;
+      const type = BEAN_POOL[Math.floor(Math.random() * BEAN_POOL.length)];
+      const cell = free[Math.floor(Math.random() * free.length)];
+      last = spawn(state, type, cell, seat, { hidden: true });
+      dropped += 1;
+      log(state, "bean", { piece: last.id, type, cell, seat, left });
+    }
+    if (!dropped) return null;
     st.value.left = left - 1;
-    log(state, "bean", { piece: p.id, type, cell, seat, left: st.value.left });
+    log(state, "bean2", { seat, dropped, left: st.value.left });
     if (st.value.left <= 0) clearMine();
-    return { piece: p, cell, type, left: st.value.left };
+    return { piece: last, cell: last.position, type: last.type, left: st.value.left };
   }
 
   // 宁有种乎：随机几枚己方子改军衔——一半升 1 级，一半在原级附近浮动
@@ -374,6 +385,9 @@
       const cell = ctx.cells && ctx.cells[0];
       if (!cell) return [];
       const p = spawn(state, pick.type, cell, ctx.seat);
+      if (ctx.params && ctx.params.bonus) {
+        S.add(state, { key: "rankBonus", target: p.id, until: null, value: { n: ctx.params.bonus } });
+      }
       state.dlc.dead = state.dlc.dead.filter((d) => d.id !== pick.id);
       log(state, "revive", { piece: p.id, type: pick.type });
       return [{ op: "REVIVE", piece: p.id }];
@@ -560,8 +574,9 @@
       const t = ctx.target;
       if (!t) return [];
       const left = (ctx.params && ctx.params.uses) || 3;
-      S.add(state, { key: "sanbanfu", target: t.id, until: null, value: { left } });
-      log(state, "sanbanfu", { piece: t.id, left });
+      const keep = !!(ctx.params && ctx.params.keep);
+      S.add(state, { key: "sanbanfu", target: t.id, until: null, value: { left, keep } });
+      log(state, "sanbanfu", { piece: t.id, left, keep });
       return [{ op: "SANBANFU", piece: t.id, left }];
     },
     project() { return 16; },
@@ -639,6 +654,13 @@
     apply(state, ctx) {
       const seats = ctx.params.team === "self" ? [ctx.seat] : teamSeats(state, ctx.seat).enemies;
       for (const s of seats) S.add(state, { key: "silenced", team: s, until: ctx.turns || 2 });
+      // 断粮 Ⅲ：顺手把对手手牌砍到 1 张
+      if (ctx.params.handCap != null) {
+        for (const s of seats) {
+          const hand = (state.dlc.hands && state.dlc.hands[s]) || [];
+          if (hand.length > ctx.params.handCap) hand.length = ctx.params.handCap;
+        }
+      }
       log(state, "silence", { seats, turns: ctx.turns });
       return [{ op: "NEGATE_SKILL", seats }];
     },
@@ -718,7 +740,17 @@
     apply(state, ctx) {
       const t = ctx.target;
       if (!t || !t.position) return [];
-      const ring = [t.position].concat(B.BOARD.neighbors.get(t.position) || []);
+      let ring = [t.position].concat(B.BOARD.neighbors.get(t.position) || []);
+      if (ctx.params && ctx.params.ring === 8) {
+        // 加强版：八个方向（含斜角）都算
+        const c = B.BOARD.byId.get(t.position);
+        if (c) {
+          ring = [];
+          for (const nd of B.BOARD.nodes) {
+            if (Math.abs(nd.x - c.x) <= 1 && Math.abs(nd.y - c.y) <= 1) ring.push(nd.id);
+          }
+        }
+      }
       const out = [];
       for (const v of state.pieces) {
         if (!v.position || !ring.includes(v.position)) continue;
@@ -731,6 +763,20 @@
       return out;
     },
     project() { return 16; },
+  };
+
+  ATOMS.CLEAR_FROZEN = {
+    apply(state, ctx) {
+      const ids = state.pieces.filter((p) => p.owner === ctx.seat).map((p) => p.id);
+      const before = (state.dlc.statuses || []).length;
+      state.dlc.statuses = (state.dlc.statuses || []).filter(
+        (st) => !(st.key === "frozen" && ids.indexOf(st.target) >= 0)
+      );
+      const n = before - state.dlc.statuses.length;
+      log(state, "thaw", { seat: ctx.seat, n });
+      return [{ op: "CLEAR_FROZEN", n }];
+    },
+    project() { return 5; },
   };
 
   ATOMS.UNBLOCK = {
@@ -793,7 +839,8 @@
     const defMuted = S.get(state, "bombMuted", undefined, defender.owner);
     const atkImmortal = S.get(state, "immortal", attacker.id);
     const defImmortal = S.get(state, "immortal", defender.id);
-    const atkPierce = S.get(state, "pierce", attacker.id);
+    let atkPierce = S.get(state, "pierce", attacker.id);
+    if (!atkPierce) atkPierce = S.get(state, "pierce", undefined, attacker.owner);   // 全军必赢（硬吃 Ⅲ / 士气 Ⅲ）
     const anyRetreat = S.get(state, "retreat", attacker.id) || S.get(state, "retreat", defender.id);
 
     // 被动卡（持有即生效）
@@ -817,6 +864,9 @@
       const dr = effRank(defender);
       if (dr <= 4) return "attacker";
     }
+    // 空炸 Ⅲ：己方炸弹被吃时也不消失（加害方反而死）
+    const defBombSmall = S.get(state, "bombSmall", undefined, defender.owner);
+    if (defBombSmall && defender.type === "bomb" && attacker.type !== "bomb") return "defender";
     // 越级克敌：营长及以下主动打军长/司令 → 平兑
     if (overreach && effRank(attacker) <= 4 && effRank(defender) >= 8) return "both";
     // 田忌赛马：小子打"战斗过"的大子 → 平兑
@@ -877,6 +927,8 @@
     switch (cond) {
       case "always":
         return true;
+      case "lowRank":        // 己方排长及以下发起攻击（越级克敌 Ⅲ）
+        return side === "atk" && rankOf(self && self.type) > 0 && rankOf(self.type) <= 2;
       case "fromCamp": {      // 从行营出发的攻击
         const cn = nodeOf(self);
         return side === "atk" && !!cn && cn.kind === "camp";
