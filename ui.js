@@ -567,7 +567,7 @@
       return viewMode === "double" ? "你控" : "你";
     }
     if (isAgentSeat(seat)) return (window.JunqiAgent && window.JunqiAgent.online) ? "外援·在线" : "外援·离线";
-    return B.teamOf(seat) === B.teamOf(HUMAN) ? "盟友" : "敌方";
+    return B.teamOf(seat) === B.teamOf(meSeat()) ? "盟友" : "敌方";
   }
 
   // ---------- 人控座位 / 外援座位 / 南方托管 / 分座位暗牌 / 敌方标记 ----------
@@ -586,9 +586,24 @@
     return !state || !state.seats || state.seats.indexOf(seat) >= 0;
   }
   function humanSeats() {
+    // 局域网：哪些座位是"人"由房间决定 —— 房主=自己+远程玩家，客户端=只有自己。
+    // 必须覆盖掉下面的单机默认值，否则客户端会以为自己还控着南家。
+    const lan = (window.JunqiLAN && window.JunqiLAN.seats) ? window.JunqiLAN.seats() : null;
+    if (lan && lan.length) return lan.slice();
     if (duelMode) return [HUMAN];
     const base = (viewMode === "double" || agentSeats.length >= 2) ? [HUMAN, "north"] : [HUMAN];
     return base.filter((s) => !agentSeats.includes(s));
+  }
+  function lanClient() { return !!(window.JunqiLAN && window.JunqiLAN.isClient && window.JunqiLAN.isClient()); }
+  function lanHost() { return !!(window.JunqiLAN && window.JunqiLAN.isHost && window.JunqiLAN.isHost()); }
+  // "我"是哪一家：单机恒为南，局域网里是房间分给我的座位。
+  // 之前一律写死 HUMAN，导致客户端坐北家时看得见南家的子、看不见自己的子。
+  function meSeat() { return (state && state.human && state.human !== "none") ? state.human : HUMAN; }
+  // 棋盘该转向谁：局域网里让自己那一方永远在下方（复盘另有自己的视角开关）
+  function viewSeatNow() {
+    const LAN = window.JunqiLAN;
+    if (LAN && LAN.info && LAN.info.joined && LAN.info.seat) return LAN.info.seat;
+    return null;
   }
   function isHumanSeat(seat) {
     if (sandboxMatch) return false;          // 沙盘局四家都交给 AI
@@ -683,7 +698,7 @@
     if (!L) return null;
     const replayHidden = replayMode && replayHiddenIds.has(piece.id);
     // 沙盘/接管编辑期间亮真牌：摆子时必须看得见摆的是什么，否则只能靠记忆下盲棋
-    const visible = replayMode ? !replayHidden : (sandboxMode ? true : G.visibleTo(state, HUMAN, piece));
+    const visible = replayMode ? !replayHidden : (sandboxMode ? true : G.visibleTo(state, meSeat(), piece));
     const shownType = replayMode ? (piece.replayType || piece.actualType || piece.type) : piece.type;
     const color = B.SEAT_COLORS[piece.owner];
     const box = tileBox(L);
@@ -709,7 +724,8 @@
         fill: shownType === "flag" ? "#fff2b8" : "#ffffff",
         stroke: "rgba(0,0,0,.20)", "stroke-width": 0.4, "paint-order": "stroke",
       });
-      const viewAngle = replayMode ? (VIEW_ANGLE[replayView] || 0) : 0;
+      const vsNow = replayMode ? replayView : viewSeatNow();
+      const viewAngle = vsNow ? (VIEW_ANGLE[vsNow] || 0) : 0;
       const textRotate = viewAngle ? -viewAngle : (vertical ? 90 : 0);
       if (textRotate) t.setAttribute("transform", `rotate(${textRotate})`);
       t.textContent = B.PIECE_INFO[shownType].name;
@@ -809,12 +825,12 @@
   const FALLEN_BIG = { commander: 1, army: 1, division: 1 };
   const SEAT_CN = { north: "北", east: "东", south: "南", west: "西" };
 
-  const myTeam = B.teamOf ? B.teamOf(HUMAN) : "A";
+  function myTeamNow() { return B.teamOf ? B.teamOf(meSeat()) : "A"; }
   function revealsToMe(seat) {
-    if (seat === HUMAN) return true;
+    if (seat === meSeat()) return true;
     if (!state) return false;
     if (state.infoMode === "all") return true;
-    if (state.infoMode === "team" && B.teamOf && B.teamOf(seat) === myTeam) return true;
+    if (state.infoMode === "team" && B.teamOf && B.teamOf(seat) === myTeamNow()) return true;
     return false;
   }
   // 已阵亡棋子的兵种：不知道就返回 null（显示成 ?）
@@ -838,11 +854,11 @@
     const out = {};
     const I = window.JunqiAI && window.JunqiAI._internals;
     if (!I || !I.dominantCandidates) return out;
-    if (!state || state.phase === "over" || (state.out && state.out[HUMAN])) return out;
+    if (!state || state.phase === "over" || (state.out && state.out[meSeat()])) return out;
     const key = domKeyOf(state);
     if (domCache.state !== state || domCache.key !== key) {
       let val = [];
-      try { val = I.dominantCandidates(state, HUMAN, DOM_SHOW) || []; } catch (err) { val = []; }
+      try { val = I.dominantCandidates(state, meSeat(), DOM_SHOW) || []; } catch (err) { val = []; }
       domCache = { state: state, key: key, val: val };
     }
     for (const group of domCache.val) {
@@ -927,6 +943,10 @@
     // 实时监听：每走一手把局面推给桥，外援那边不用等到自己回合也能看直播
     if (!replayMode && window.JunqiAgent && window.JunqiAgent.enabled) {
       window.JunqiAgent.watch(state);
+    }
+    // 局域网房主：每次重绘后把权威局面推给其他人（内部去抖 + 判重）
+    if (window.JunqiLAN && window.JunqiLAN.maybePush) {
+      try { window.JunqiLAN.maybePush(); } catch (e) { /* 推送失败不影响本地对局 */ }
     }
   }
 
@@ -1017,7 +1037,9 @@
     if (stage) {
       for (const seat of B.SEATS) stage.classList.remove("turn-" + seat);
       for (const seat of B.SEATS) stage.classList.remove("view-" + seat);
-      if (replayMode && replayView !== "south") stage.classList.add("view-" + replayView);
+      // 局域网里让"我这一家"永远在下方：坐北家就转 180°，不然自己的子在对面
+      const vs = replayMode ? replayView : viewSeatNow();
+      if (vs && vs !== "south") stage.classList.add("view-" + vs);
       if (phase === "playing" || phase === "raise") stage.classList.add("turn-" + turn);
     }
     document.querySelectorAll(".replay-view").forEach((el) => {
@@ -1188,6 +1210,8 @@
 
   function scheduleAI() {
     clearTimeout(aiTimer);
+    // 局域网客户端：AI 和回合推进都由房主算，这里绝不能本地再跑一遍
+    if (lanClient()) return;
     if (replayMode || !state || state.phase !== "playing" || isHumanTurn()) return;
     // 外援座位：不跑本地 AI，等桥后面那个人交子
     if (isAgentSeat(state.turn)) {
@@ -1237,6 +1261,7 @@
   }
 
   function aiStep() {
+    if (lanClient()) return;
     if (!state || state.phase !== "playing" || isHumanTurn()) return;
     const seat = state.turn;
     if (state.out[seat] || !inPlay(seat)) {
@@ -1300,6 +1325,11 @@
       const raiseSeat = state.pendingRaise ? state.pendingRaise.seat : null;
       if (raiseSeat && isHumanSeat(raiseSeat)) {
         const targets = currentRaiseTargets();
+        if (targets.includes(pos) && lanClient()) {
+          window.JunqiLAN.sendAction("raise", { pos });
+          selected = null; legal = []; hoverPos = null; render();
+          return;
+        }
         if (targets.includes(pos) && G.raiseFlag(state, raiseSeat, pos)) {
           playResultSound({ sound: null });
           selected = null; legal = []; hoverPos = null;
@@ -1319,6 +1349,11 @@
     const seat = state.turn;
 
     if (selected && legal.includes(pos)) {
+      if (lanClient()) {                       // 局域网：交给房主执行，等下一帧局面
+        window.JunqiLAN.sendAction("move", { from: selected, to: pos });
+        selected = null; legal = []; hoverPos = null; render();
+        return;
+      }
       const res = G.applyMove(state, seat, selected, pos);
       if (res.ok) {
         playResultSound(res);
@@ -1476,7 +1511,7 @@
   function tipData() {
     const key = `${state.moveCount}|${(state.battles || []).length}|${(state.moveTape || []).length}`;
     if (key === tipCacheKey && tipCache) return tipCache;
-    const seat = HUMAN;
+    const seat = meSeat();
     const out = { gen0: null, one: null, domain: null };
     try {
       out.gen0 = window.JunqiAI0.buildBelief(state, seat);
@@ -1539,7 +1574,7 @@
     }
     advTip.dataset.pos = pos;
 
-    const seat = HUMAN;
+    const seat = meSeat();
     const TYPE_ORDER = window.JunqiAI0 ? window.JunqiAI0.CONST.TYPE_ORDER : [];
     const known = piece.owner === seat || G.visibleTo(state, seat, piece);
     let html = `<div class="tip-title">${posName(pos)} · ${piece.owner === seat ? "我方" : (known ? "已亮明" : "暗子")}</div>`;
@@ -1740,7 +1775,7 @@
             if (q.owner !== p.owner || q === p) continue;
             if (I.zoneOfPos(I.initPosOf(state, q)) !== z) continue;
             // 死子也算：亮明过的司令阵亡了，这个区的名额照样是花掉的
-            const known = q.revealed || (q.position && G.visibleTo(state, HUMAN, q));
+            const known = q.revealed || (q.position && G.visibleTo(state, meSeat(), q));
             if (known && BIG_TYPES.includes(q.type)) big += 1;
           }
           if (big > 0) ev.push({ k: "区", tier: "small", note: `开局同区有 ${big} 个明大子，本子大子率下调` });
@@ -2176,7 +2211,101 @@
     render();
   }
 
+  // ---------------- 局域网（房主侧） ----------------
+  // 房主开一局：humans 是房间里真人占的座位，其余交给 AI
+  function lanStart(humans) {
+    const seats = (humans && humans.length ? humans.slice() : [HUMAN]).filter((x, i, a) => a.indexOf(x) === i);
+    const mySeat = seats.indexOf(HUMAN) >= 0 ? HUMAN : seats[0];
+    clearTimeout(aiTimer);
+    quizCtx = null;
+    if (dlcQuizEl) dlcQuizEl.classList.add("hidden");
+    sandboxMode = false;
+    sandboxMatch = false;
+    sandboxTakeover = false;
+    if (sandboxEl) sandboxEl.classList.add("hidden");
+    replayMode = false;
+    replayFrames = [];
+    replayIndex = 0;
+    replayLive = null;
+    autoSouth = false;
+    pieceMarks.clear();
+    hideMarkMenu();
+    resultShown = false;
+    viewMode = "normal";
+    if (viewSelect) viewSelect.value = "normal";
+    // 天命暗牌按房主勾的座位走（之前写死全 false，局域网里根本开不了）
+    const latentSeats = readLatentSeats();
+    state = G.newGame({
+      human: mySeat, mode: "standard", humanSeats: seats, infoMode: "normal",
+      latentSeats,
+      history: false, agentSeats: [],
+    });
+    try { assignAIProfiles(state); } catch (e) { /* 没有 AI 档案也能打 */ }
+    state.adaptFor = { north: true, east: true, south: true, west: true };
+    G.autoArrange(state);
+    G.startGame(state);
+    dlcInitNow();
+    selected = null;
+    legal = [];
+    hoverPos = null;
+    render();
+    scheduleAI();
+    return seats;
+  }
+
+  // 房主收到远端玩家的操作：用**那个座位**执行，然后照常推进
+  function lanApply(kind, payload, seat) {
+    if (!state || !seat) return { ok: false, msg: "没有局面" };
+    const p = payload || {};
+    // 三选一是"随时能领"的，不受轮次限制；其余操作必须轮到自己
+    if (kind === "draft") {
+      let r = null;
+      try { r = DLCX.take(state, seat, p.id); } catch (e) { r = { ok: false, msg: e.message }; }
+      render();
+      return r || { ok: true };
+    }
+    if (state.turn !== seat) return { ok: false, msg: "还没轮到" };
+    if (kind === "move") {
+      if (state.phase !== "playing") return { ok: false, msg: "当前不能走子" };
+      const res = G.applyMove(state, seat, p.from, p.to);
+      if (res.ok) playResultSound(res);
+      else state.log.push("（远端）" + res.message);
+      hoverPos = null;
+      render();
+      if (!res.pendingRaise && state.phase !== "over") {
+        if (!checkHumanTurn()) scheduleAI();
+      }
+      return res;
+    }
+    if (kind === "raise") {
+      const ok = G.raiseFlag(state, seat, p.pos);
+      selected = null; legal = []; hoverPos = null;
+      render();
+      if (state.phase === "playing" && !checkHumanTurn()) scheduleAI();
+      return { ok };
+    }
+    if (kind === "passive") {
+      let r = null;
+      try { r = DLCX.usePassive(state, seat, p.id); } catch (e) { r = { ok: false, msg: e.message }; }
+      render();
+      if (state.phase === "playing") { if (!checkHumanTurn()) scheduleAI(); }
+      return r || { ok: true };
+    }
+    if (kind === "card") {
+      let r = null;
+      try {
+        r = DLCX.play(state, seat, p.id, p.tier || 1, p.picks || null, false, p.picks2 || null, p.tier || 1);
+      } catch (e) { r = { ok: false, msg: e.message }; }
+      if (r && !r.ok) state.log.push("（远端）打不出：" + (r.msg || "未知原因"));
+      render();
+      if (state.phase === "playing") { if (!checkHumanTurn()) scheduleAI(); }
+      return r;
+    }
+    return { ok: false, msg: "未知操作" };
+  }
+
   function newGame() {
+    if (lanClient()) return;                  // 局域网客户端：局面由房主发过来，不能自己造
     clearTimeout(aiTimer);
     quizCtx = null;                        // 换局时把没答完的战地问答关掉
     if (dlcQuizEl) dlcQuizEl.classList.add("hidden");
@@ -2233,6 +2362,7 @@
   }
 
   function startGame() {
+    if (lanClient()) return;
     autoSaveKey = null;
     if (!state || state.phase !== "setup") return;
     if (!sandboxMode && state.aiProfiles && window.JunqiAI && window.JunqiAI.applyOpenings) {
@@ -2519,6 +2649,13 @@
         + '<div class="ef">' + desc.effect + '</div>';
       el.title = desc.full;
       el.onclick = () => {
+        if (lanClient()) {                       // 局域网：取牌也由房主结算
+          window.JunqiLAN.sendAction("draft", { id: x.id });
+          dlcDraftEl.classList.add("hidden");
+          dlcShownOffer = "";
+          render();
+          return;
+        }
         DLCX.take(state, dlcSeat(), x.id);
         dlcDraftEl.classList.add("hidden");
         dlcShownOffer = "";
@@ -2604,6 +2741,11 @@
     const tier = entry.tier || 1;
 
     if (c.when === "passive") {
+      if (lanClient()) {                         // 局域网：被动卡也交给房主生效
+        window.JunqiLAN.sendAction("passive", { id: cardId });
+        finishCard({ ok: true });
+        return;
+      }
       let r = null;
       try { r = DLCX.usePassive(state, seat, cardId); } catch (e) { r = { ok: false, msg: e.message }; }
       finishCard(r);
@@ -2705,6 +2847,13 @@
 
   function executeCard(cardId, tier, forced1, forced2) {
     const seat = dlcSeat();
+    if (lanClient()) {                         // 局域网：出牌也交给房主结算
+      window.JunqiLAN.sendAction("card", { id: cardId, tier, picks: forced1 || null, picks2: forced2 || null });
+      armed = null; selected = null; legal = []; hoverPos = null;
+      if (dlcConfirmEl) { dlcConfirmEl.classList.add("hidden"); dlcConfirmEl.innerHTML = ""; }
+      render();
+      return;
+    }
     let r = null;
     // 第 8 个参数是"这次按几级结算"：答题定出来的等级要压过手牌上写的等级
     try { r = DLCX.play(state, seat, cardId, tier, forced1, false, forced2, tier); } catch (e) { r = { ok: false, msg: e.message }; }
@@ -3912,6 +4061,8 @@
     get agent() { return window.JunqiAgent || null; },
     // 战地问答的当前会话（调试/自动化测试用：能拿到题目与正确答案）
     get quiz() { return quizCtx; },
+    // 局域网：房主开局 / 执行远端操作
+    lanStart, lanApply,
     get armed() { return armed; },
     // 测试用：某张卡在某一级"要选几个目标"（Ⅲ 级可能和 Ⅰ 级不同）
     needOf(id, lv, which) { const c = DLCX.cardOf(id); return c ? needOf(c, lv, which) : -1; },
@@ -3943,7 +4094,13 @@
       walk(svg);
       return out;
     },
-    load(s) { state = s; selected = null; legal = []; hoverPos = null; render(); },
+    load(s) {
+      state = s; selected = null; legal = []; hoverPos = null;
+      // 整盘替换时把"选到一半"的交互清掉：卡牌选目标的下标会和新局面错位
+      armed = null;
+      if (dlcConfirmEl) { dlcConfirmEl.classList.add("hidden"); dlcConfirmEl.innerHTML = ""; }
+      render();
+    },
     click(pos) {
       const el = svg.querySelector('[data-pos="' + pos + '"]');
       if (el) el.dispatchEvent(new MouseEvent("click", { bubbles: true }));

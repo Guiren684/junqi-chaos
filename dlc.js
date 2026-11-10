@@ -1355,9 +1355,13 @@
     }
   }
 
-  // 只有 state.human 指定的那个座位才算"人"；演示/自走时 state.human="none"，四家都是 AI
+  // 哪些座位是"人"：单机就是 state.human 那一个；局域网里 humanSeats 才是全名单
+  // （不认 humanSeats 的话，房主会把远端玩家的座位当成 AI，替他取牌、替他出牌）
   function isHuman(state, seat) {
-    return !!(state && state.human && state.human === seat);
+    if (!state || !seat) return false;
+    if (!state.human || state.human === "none") return false;   // 演示/自走：四家都是 AI
+    if (state.human === seat) return true;
+    return Array.isArray(state.humanSeats) && state.humanSeats.indexOf(seat) >= 0;
   }
 
   /**
